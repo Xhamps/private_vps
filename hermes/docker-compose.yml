@@ -34,10 +34,8 @@ services:
       traefik.enable: "true"
       traefik.http.routers.hermes.rule: Host(`hermes.${DOMAIN}`)
       traefik.http.routers.hermes.tls.certresolver: le
-      # basic auth in front of the dashboard; hash comes from the
-      # HERMES_BASIC_AUTH line in the ENV_hermes secret (htpasswd -nB, $ -> $$)
-      traefik.http.routers.hermes.middlewares: hermes-auth
-      traefik.http.middlewares.hermes-auth.basicauth.users: ${HERMES_BASIC_AUTH}
+      # auth is handled by the dashboard itself (HERMES_DASHBOARD_BASIC_AUTH_*
+      # env vars from the ENV_hermes secret)
       traefik.http.services.hermes.loadbalancer.server.port: "3000"
 
 networks:

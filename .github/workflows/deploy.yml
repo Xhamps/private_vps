@@ -84,30 +84,6 @@ jobs:
           } | ssh ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }} \
               "umask 077 && cat > /opt/infra/${{ matrix.stack }}/.env"
 
-      # writes hermes's own dashboard login (its config.yaml lives in
-      # /opt/data — agent-owned, so append-only: never touch an existing
-      # dashboard: block). Hash generated once with:
-      #   docker run --rm nousresearch/hermes-agent python -c \
-      #     "from plugins.dashboard_auth.basic import hash_password; print(hash_password('PASS'))"
-      - name: Configure Hermes dashboard auth
-        if: matrix.stack == 'hermes'
-        env:
-          DASH_USER: ${{ secrets.HERMES_DASHBOARD_USER }}
-          DASH_HASH: ${{ secrets.HERMES_DASHBOARD_HASH }}
-        run: |
-          if [ -z "$DASH_HASH" ]; then
-            echo "no HERMES_DASHBOARD_HASH secret — skipping"
-            exit 0
-          fi
-          printf 'dashboard:\n  basic_auth:\n    username: %s\n    password_hash: "%s"\n' \
-              "${DASH_USER:-admin}" "$DASH_HASH" | \
-            ssh ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }} "sudo bash -c '
-              c=/opt/data/hermes/config.yaml
-              grep -q \"^dashboard:\" \"\$c\" 2>/dev/null && exit 0
-              cat >> \"\$c\"
-              chown 10000:10000 \"\$c\" && chmod 600 \"\$c\"
-              cd /opt/infra/hermes && docker compose restart dashboard 2>/dev/null || true'"
-
       - name: Deploy ${{ matrix.stack }} stack
         run: |
           ssh ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }} \
