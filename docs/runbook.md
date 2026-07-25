@@ -22,7 +22,7 @@
    ```
 6. Grafana at `https://grafana.yourdomain.com` — import dashboards 1860 (node-exporter), 14282 (cAdvisor), 17346 (Traefik).
 7. Uptime Kuma at `https://status.yourdomain.com` — create admin, add one HTTPS check per subdomain (enable cert-expiry notification, <14 days).
-8. Telegram alerts: create bot via @BotFather, put token in `/opt/data/alertmanager/telegram.token` (chmod 600), set `chat_id` in `monitoring/alertmanager/alertmanager.yml`, push.
+8. Telegram alerts: create bot via @BotFather, save its token as the `TELEGRAM_BOT_TOKEN` Actions secret (the pipeline writes it to the VPS on each monitoring deploy), set `chat_id` in `monitoring/alertmanager/alertmanager.yml`, push.
 
 ## Adding a new project
 
