@@ -3,7 +3,7 @@
 ## First deploy (order matters)
 
 1. Phase 0 done (VPS + DNS wildcard + SSH key).
-2. `scp bootstrap.sh root@VPS_IP:/tmp/ && ssh root@VPS_IP "bash /tmp/bootstrap.sh"` — copy the printed CI key into GitHub secrets (`SSH_HOST`, `SSH_USER`, `SSH_KEY`), then delete it from the VPS.
+2. `scp bootstrap.sh root@VPS_IP:/tmp/ && ssh root@VPS_IP "bash /tmp/bootstrap.sh"` — it generates a CI keypair and prints instructions (never the key itself). Fetch the private key over SSH, save it as the `SSH_KEY` secret (plus `SSH_HOST`, `SSH_USER`), then delete it from the VPS.
 3. In GitHub → Settings → Secrets and variables → Actions (org-level where shared):
    - **Variable** `DOMAIN` = `yourdomain.com` (this repo + every project repo)
    - **Secret** `ENV_monitoring` = `GRAFANA_ADMIN_PASSWORD=<openssl rand -hex 16>`
