@@ -48,6 +48,28 @@ jobs:
             ssh ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }} \
               "umask 077 && cat > /opt/infra/${{ matrix.stack }}/.env"
 
+      # token lives in /opt/data (persistent, root-managed); written via sudo
+      # stdin so it never appears in argv or logs, restart only on change
+      - name: Inject Telegram bot token
+        if: matrix.stack == 'monitoring'
+        env:
+          TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+        run: |
+          if [ -z "$TOKEN" ]; then
+            echo "no TELEGRAM_BOT_TOKEN secret — skipping"
+            exit 0
+          fi
+          printf '%s\n' "$TOKEN" | ssh ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }} "
+            sudo install -m 600 -o 65534 -g 65534 /dev/stdin /opt/data/alertmanager/telegram.token.new &&
+            sudo bash -c '
+              t=/opt/data/alertmanager/telegram.token
+              if cmp -s \"\$t.new\" \"\$t\" 2>/dev/null; then
+                rm \"\$t.new\"
+              else
+                mv \"\$t.new\" \"\$t\"
+                cd /opt/infra/monitoring && docker compose restart alertmanager 2>/dev/null || true
+              fi'"
+
       - name: Deploy ${{ matrix.stack }} stack
         run: |
           ssh ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }} \
