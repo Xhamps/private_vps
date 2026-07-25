@@ -1,0 +1,63 @@
+name: deploy
+
+on:
+  push:
+    branches: [main]
+
+concurrency: deploy
+
+permissions:
+  contents: read
+  packages: write
+
+env:
+  APP: myapp   # <-- change: app name = GHCR image name = /opt/apps/<name>
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: true
+          tags: |
+            ghcr.io/${{ github.repository_owner }}/${{ env.APP }}:${{ github.sha }}
+            ghcr.io/${{ github.repository_owner }}/${{ env.APP }}:latest
+
+      - name: Set up SSH
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.SSH_KEY }}" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          ssh-keyscan -H "${{ secrets.SSH_HOST }}" >> ~/.ssh/known_hosts
+
+      - name: Sync compose file
+        run: |
+          ssh ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }} "mkdir -p /opt/apps/$APP"
+          rsync -az docker-compose.yml \
+            ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}:/opt/apps/$APP/
+
+      - name: Deploy
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          echo "$GH_TOKEN" | ssh ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }} "
+            set -e
+            docker login ghcr.io -u ${{ github.actor }} --password-stdin
+            cd /opt/apps/$APP
+            set -a; source /opt/infra/.env; set +a
+            TAG=${{ github.sha }} docker compose pull
+            TAG=${{ github.sha }} docker compose up -d
+            docker logout ghcr.io
+          "

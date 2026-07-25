@@ -1,0 +1,79 @@
+# Monitoring stack (Phase 4). Requires /opt/infra/monitoring/.env on the VPS:
+#   DOMAIN=yourdomain.com
+#   GRAFANA_ADMIN_PASSWORD=...
+services:
+  prometheus:
+    image: prom/prometheus:v3.4.1
+    restart: unless-stopped
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.retention.time=30d
+    volumes:
+      - ./prometheus:/etc/prometheus:ro
+      - /opt/data/prometheus:/prometheus
+    networks: [proxy]
+
+  node-exporter:
+    image: prom/node-exporter:v1.9.1
+    restart: unless-stopped
+    command:
+      - --path.rootfs=/host
+    pid: host
+    volumes:
+      - /:/host:ro,rslave
+    networks: [proxy]
+
+  cadvisor:
+    image: gcr.io/cadvisor/cadvisor:v0.52.1
+    restart: unless-stopped
+    privileged: true
+    devices:
+      - /dev/kmsg
+    volumes:
+      - /:/rootfs:ro
+      - /var/run:/var/run:ro
+      - /sys:/sys:ro
+      - /var/lib/docker:/var/lib/docker:ro
+    networks: [proxy]
+
+  grafana:
+    image: grafana/grafana:12.0.2
+    restart: unless-stopped
+    environment:
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD}
+      GF_SERVER_ROOT_URL: https://grafana.${DOMAIN}
+    volumes:
+      - /opt/data/grafana:/var/lib/grafana
+    networks: [proxy]
+    labels:
+      traefik.enable: "true"
+      traefik.http.routers.grafana.rule: Host(`grafana.${DOMAIN}`)
+      traefik.http.routers.grafana.tls.certresolver: le
+      traefik.http.services.grafana.loadbalancer.server.port: "3000"
+
+  alertmanager:
+    image: prom/alertmanager:v0.28.1
+    restart: unless-stopped
+    volumes:
+      - ./alertmanager:/etc/alertmanager:ro
+      - /opt/data/alertmanager:/alertmanager
+    command:
+      - --config.file=/etc/alertmanager/alertmanager.yml
+      - --storage.path=/alertmanager
+    networks: [proxy]
+
+  uptime-kuma:
+    image: louislam/uptime-kuma:1
+    restart: unless-stopped
+    volumes:
+      - /opt/data/uptime-kuma:/app/data
+    networks: [proxy]
+    labels:
+      traefik.enable: "true"
+      traefik.http.routers.kuma.rule: Host(`status.${DOMAIN}`)
+      traefik.http.routers.kuma.tls.certresolver: le
+      traefik.http.services.kuma.loadbalancer.server.port: "3001"
+
+networks:
+  proxy:
+    external: true

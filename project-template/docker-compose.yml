@@ -1,0 +1,23 @@
+# Template compose (Phase 5). Replace "myapp" and the subdomain.
+# Deployed to /opt/apps/<name>/ — TAG and DOMAIN come from the deploy workflow / .env.
+services:
+  myapp:
+    image: ghcr.io/OWNER/myapp:${TAG:-latest}
+    restart: unless-stopped
+    # no ports: — Traefik is the only container that publishes ports
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:3000/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+    networks: [proxy]
+    labels:
+      traefik.enable: "true"
+      traefik.http.routers.myapp.rule: Host(`myapp.${DOMAIN}`)
+      traefik.http.routers.myapp.tls.certresolver: le
+      traefik.http.services.myapp.loadbalancer.server.port: "3000"
+
+networks:
+  proxy:
+    external: true

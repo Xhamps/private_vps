@@ -1,0 +1,33 @@
+groups:
+  - name: vps
+    rules:
+      - alert: InstanceDown
+        expr: up == 0
+        for: 3m
+        labels: { severity: critical }
+        annotations:
+          summary: "{{ $labels.job }} target down ({{ $labels.instance }})"
+
+      - alert: DiskUsageHigh
+        expr: 100 - (node_filesystem_avail_bytes{fstype!~"tmpfs|overlay"} / node_filesystem_size_bytes * 100) > 85
+        for: 10m
+        labels: { severity: warning }
+        annotations:
+          summary: "Disk {{ $labels.mountpoint }} above 85% ({{ $value | printf \"%.0f\" }}%)"
+
+      - alert: MemoryUsageHigh
+        expr: (1 - node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes) * 100 > 90
+        for: 15m
+        labels: { severity: warning }
+        annotations:
+          summary: "Memory above 90% for 15m"
+
+      - alert: ContainerRestartLoop
+        expr: changes(container_start_time_seconds{name!=""}[15m]) > 3
+        for: 0m
+        labels: { severity: warning }
+        annotations:
+          summary: "Container {{ $labels.name }} restarting repeatedly"
+
+      # ponytail: TLS-expiry alerting is handled natively by Uptime Kuma per-check
+      # (Traefik exposes no cert-expiry metric); add blackbox-exporter if Kuma isn't enough.

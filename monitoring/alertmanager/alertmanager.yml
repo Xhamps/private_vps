@@ -1,0 +1,13 @@
+# Telegram receiver. Create these two files ONCE on the VPS (never in git):
+#   /opt/data/alertmanager/telegram.token   (bot token from @BotFather)
+# and set your chat id below via the deploy repo (chat id is not a secret).
+route:
+  receiver: telegram
+  repeat_interval: 4h
+
+receivers:
+  - name: telegram
+    telegram_configs:
+      - bot_token_file: /alertmanager/telegram.token
+        chat_id: 0            # TODO: your Telegram chat id (open item in the plan)
+        parse_mode: HTML

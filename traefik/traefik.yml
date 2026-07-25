@@ -1,0 +1,32 @@
+# Traefik static config (Phase 2)
+entryPoints:
+  web:
+    address: ":80"
+    http:
+      redirections:
+        entryPoint:
+          to: websecure
+          scheme: https
+  websecure:
+    address: ":443"
+  metrics:
+    address: ":8082"   # internal only — never published, scraped over the proxy network
+
+providers:
+  docker:
+    exposedByDefault: false
+    network: proxy
+
+certificatesResolvers:
+  le:
+    acme:
+      email: xhamps.me@gmail.com
+      storage: /acme/acme.json
+      tlsChallenge: {}
+
+metrics:
+  prometheus:
+    entryPoint: metrics
+
+log:
+  level: INFO
