@@ -26,6 +26,6 @@ jobs:
 
       - name: Run bootstrap
         run: |
-          scp bootstrap.sh ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}:/tmp/bootstrap.sh
+          scp bootstrap.sh ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}:bootstrap.sh
           ssh ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }} \
-            "sudo bash /tmp/bootstrap.sh && rm /tmp/bootstrap.sh"
+            "sudo bash ~/bootstrap.sh && rm ~/bootstrap.sh"
