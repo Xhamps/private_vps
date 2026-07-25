@@ -12,7 +12,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        stack: [traefik, monitoring, hermes]
+        stack: [traefik, monitoring, hermes, n8n]
     steps:
       - uses: actions/checkout@v4
 

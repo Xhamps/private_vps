@@ -83,6 +83,7 @@ install -d -o 65534 -g 65534 /opt/data/prometheus /opt/data/alertmanager  # nobo
 install -d -o 472 -g 472 /opt/data/grafana                                # grafana
 install -d /opt/data/uptime-kuma                                          # runs as root
 install -d -o 10000 -g 10000 /opt/data/hermes                             # hermes agent
+install -d -o 1000 -g 1000 /opt/data/n8n                                  # n8n (node user)
 
 echo "==> CI SSH keypair"
 CI_KEY=/home/$DEPLOY_USER/.ssh/ci_ed25519
