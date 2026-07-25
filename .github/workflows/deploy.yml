@@ -65,21 +65,17 @@ jobs:
             ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}:/opt/infra/
 
       # .env assembled from GitHub config at every deploy: DOMAIN from a repo
-      # variable, secrets from an ENV_<stack> secret (multiline KEY=value block).
-      # The hermes stack additionally gets the shared Telegram secrets.
-      # Skipped when the stack has no ENV_<stack> secret (e.g. traefik).
+      # variable, plus the ENV_<stack> secret (multiline KEY=value block) when
+      # one exists. The hermes stack additionally gets the shared Telegram
+      # secrets.
       - name: Inject ${{ matrix.stack }} .env
         env:
           ENV_SECRETS: ${{ secrets[format('ENV_{0}', matrix.stack)] }}
           TG_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TG_CHAT: ${{ secrets.TELEGRAM_CHAT_ID }}
         run: |
-          if [ -z "$ENV_SECRETS" ] && [ "${{ matrix.stack }}" != "hermes" ]; then
-            echo "no ENV_${{ matrix.stack }} secret — skipping .env"
-            exit 0
-          fi
           { echo "DOMAIN=${{ vars.DOMAIN }}"
-            printf '%s\n' "$ENV_SECRETS"
+            if [ -n "$ENV_SECRETS" ]; then printf '%s\n' "$ENV_SECRETS"; fi
             if [ "${{ matrix.stack }}" = "hermes" ]; then
               echo "TELEGRAM_BOT_TOKEN=$TG_TOKEN"
               echo "TELEGRAM_ALLOWED_USERS=$TG_CHAT"
