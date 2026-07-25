@@ -83,11 +83,3 @@ jobs:
         run: |
           ssh ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }} \
             "cd /opt/infra/${{ matrix.stack }} && docker compose up -d --remove-orphans"
-
-      # compose up doesn't restart on bind-mounted config changes; SIGHUP makes
-      # alertmanager re-read its config every deploy
-      - name: Reload alertmanager config
-        if: matrix.stack == 'monitoring'
-        run: |
-          ssh ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }} \
-            "cd /opt/infra/monitoring && docker compose kill -s SIGHUP alertmanager || true"
