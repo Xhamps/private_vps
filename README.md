@@ -25,7 +25,7 @@ Full design and rationale: [docs/implementation-plan.md](docs/implementation-pla
 | `project-template/` | Copy into each new project repo (Dockerfile, compose, deploy workflow) |
 | `.github/workflows/deploy.yml` | Syncs configs to the VPS and restarts stacks on push to `main` |
 
-On the VPS: configs in `/opt/infra` and `/opt/apps/<name>`, persistent data in `/opt/data` (never synced). Secrets live only in on-VPS `.env` files and GitHub Actions secrets — never in git.
+On the VPS: configs in `/opt/infra` and `/opt/apps/<name>`, persistent data in `/opt/data` (never synced). Config and secrets live in GitHub Actions Variables/Secrets — the pipeline writes each stack's `.env` on the VPS at every deploy. Nothing secret in git, nothing hand-edited on the server.
 
 ## Setup
 
@@ -36,7 +36,7 @@ On the VPS: configs in `/opt/infra` and `/opt/apps/<name>`, persistent data in `
    ```
    It hardens SSH (test key login before closing the session!), sets up ufw/fail2ban/Docker, and prints a CI keypair.
 3. **GitHub secrets** (this repo + every project repo): `SSH_HOST`, `SSH_USER` (`deploy`), `SSH_KEY` (printed by bootstrap — delete from the VPS after copying).
-4. **On-VPS `.env` files** (once): domain + Grafana password — exact commands in [runbook step 3](docs/runbook.md#first-deploy-order-matters).
+4. **GitHub config**: variable `DOMAIN`, secret `ENV_monitoring` (Grafana password), optional per-app `ENV_FILE` secret — details in [runbook step 3](docs/runbook.md#first-deploy-order-matters).
 5. **Push to `main`** → Traefik and monitoring go live. Verify with the whoami test in the runbook.
 
 From here the server is never configured by hand again — every change goes through git.

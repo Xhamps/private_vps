@@ -4,12 +4,12 @@
 
 1. Phase 0 done (VPS + DNS wildcard + SSH key).
 2. `scp bootstrap.sh root@VPS_IP:/tmp/ && ssh root@VPS_IP "bash /tmp/bootstrap.sh"` — copy the printed CI key into GitHub secrets (`SSH_HOST`, `SSH_USER`, `SSH_KEY`), then delete it from the VPS.
-3. Create once on the VPS (never in git):
-   ```bash
-   echo 'DOMAIN=yourdomain.com' > /opt/infra/.env
-   printf 'DOMAIN=yourdomain.com\nGRAFANA_ADMIN_PASSWORD=%s\n' "$(openssl rand -hex 16)" > /opt/infra/monitoring/.env
-   chmod 600 /opt/infra/.env /opt/infra/monitoring/.env
-   ```
+3. In GitHub → Settings → Secrets and variables → Actions (org-level where shared):
+   - **Variable** `DOMAIN` = `yourdomain.com` (this repo + every project repo)
+   - **Secret** `ENV_monitoring` = `GRAFANA_ADMIN_PASSWORD=<openssl rand -hex 16>`
+   - Per project repo, optional **secret** `ENV_FILE` = multiline `KEY=value` block with that app's secrets.
+
+   The pipeline assembles each stack's `.env` on the VPS from these at every deploy (mode 600) — never create or edit `.env` files on the VPS by hand.
 4. Push this repo to `main` → Traefik + monitoring go live.
 5. Verify Traefik with a throwaway whoami:
    ```bash
@@ -33,7 +33,7 @@
 ## Rollback
 
 ```bash
-ssh deploy@VPS "cd /opt/apps/<name> && set -a && source /opt/infra/.env && set +a && TAG=<old-git-sha> docker compose up -d"
+ssh deploy@VPS "cd /opt/apps/<name> && TAG=<old-git-sha> docker compose up -d"   # shell env overrides the .env TAG
 ```
 Or re-run the old workflow run from the GitHub Actions UI.
 

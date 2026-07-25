@@ -48,6 +48,19 @@ jobs:
           rsync -az docker-compose.yml \
             ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}:/opt/apps/$APP/
 
+      # .env assembled from GitHub config at every deploy: DOMAIN from a repo/org
+      # variable, TAG from the commit, app secrets from the ENV_FILE secret
+      # (multiline KEY=value block). docker compose auto-loads it.
+      - name: Inject .env
+        env:
+          ENV_SECRETS: ${{ secrets.ENV_FILE }}
+        run: |
+          { echo "DOMAIN=${{ vars.DOMAIN }}"
+            echo "TAG=${{ github.sha }}"
+            printf '%s\n' "$ENV_SECRETS"
+          } | ssh ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }} \
+                "umask 077 && cat > /opt/apps/$APP/.env"
+
       - name: Deploy
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -56,8 +69,7 @@ jobs:
             set -e
             docker login ghcr.io -u ${{ github.actor }} --password-stdin
             cd /opt/apps/$APP
-            set -a; source /opt/infra/.env; set +a
-            TAG=${{ github.sha }} docker compose pull
-            TAG=${{ github.sha }} docker compose up -d
+            docker compose pull
+            docker compose up -d
             docker logout ghcr.io
           "

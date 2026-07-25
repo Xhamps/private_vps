@@ -29,6 +29,16 @@ jobs:
             ${{ matrix.stack }} \
             ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}:/opt/infra/
 
+      # .env assembled from GitHub config at every deploy: DOMAIN from a repo
+      # variable, secrets from an ENV_<stack> secret (multiline KEY=value block).
+      - name: Inject ${{ matrix.stack }} .env
+        env:
+          ENV_SECRETS: ${{ secrets[format('ENV_{0}', matrix.stack)] }}
+        run: |
+          { echo "DOMAIN=${{ vars.DOMAIN }}"; printf '%s\n' "$ENV_SECRETS"; } | \
+            ssh ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }} \
+              "umask 077 && cat > /opt/infra/${{ matrix.stack }}/.env"
+
       - name: Deploy ${{ matrix.stack }} stack
         run: |
           ssh ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }} \
