@@ -16,6 +16,10 @@ if ! id "$DEPLOY_USER" &>/dev/null; then
   adduser --disabled-password --gecos "" "$DEPLOY_USER"
   usermod -aG sudo "$DEPLOY_USER"
 fi
+# passwordless sudo so CI can re-run this script; deploy is in the docker
+# group anyway (root-equivalent), so this adds no real attack surface
+echo "$DEPLOY_USER ALL=(ALL) NOPASSWD:ALL" > /etc/sudoers.d/$DEPLOY_USER
+chmod 440 /etc/sudoers.d/$DEPLOY_USER
 # reuse root's authorized_keys (Hostinger installs your personal key there)
 install -d -m 700 -o "$DEPLOY_USER" -g "$DEPLOY_USER" /home/$DEPLOY_USER/.ssh
 if [ -f /root/.ssh/authorized_keys ]; then
@@ -69,6 +73,10 @@ docker network inspect proxy &>/dev/null || docker network create proxy
 echo "==> directories"
 install -d -o "$DEPLOY_USER" -g "$DEPLOY_USER" /opt/infra /opt/apps /opt/data
 install -d -m 700 -o "$DEPLOY_USER" -g "$DEPLOY_USER" /opt/data/traefik
+# data dirs must be writable by each container's internal user
+install -d -o 65534 -g 65534 /opt/data/prometheus /opt/data/alertmanager  # nobody
+install -d -o 472 -g 472 /opt/data/grafana                                # grafana
+install -d /opt/data/uptime-kuma                                          # runs as root
 
 echo "==> CI SSH keypair"
 CI_KEY=/home/$DEPLOY_USER/.ssh/ci_ed25519
