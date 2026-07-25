@@ -40,7 +40,11 @@ jobs:
           mkdir -p ~/.ssh
           echo "${{ secrets.SSH_KEY }}" > ~/.ssh/id_ed25519
           chmod 600 ~/.ssh/id_ed25519
-          ssh-keyscan -H "${{ secrets.SSH_HOST }}" >> ~/.ssh/known_hosts
+          for i in 1 2 3 4 5; do
+            ssh-keyscan -T 10 -H "${{ secrets.SSH_HOST }}" >> ~/.ssh/known_hosts && break
+            echo "ssh-keyscan attempt $i failed; retrying in 10s"; sleep 10
+          done
+          grep -q . ~/.ssh/known_hosts || { echo "VPS unreachable on :22"; exit 1; }
 
       - name: Sync compose file
         run: |
