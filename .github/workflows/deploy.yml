@@ -27,6 +27,19 @@ jobs:
           done
           grep -q . ~/.ssh/known_hosts || { echo "VPS unreachable on :22"; exit 1; }
 
+      # chat_id placeholder is filled from the TELEGRAM_CHAT_ID secret before
+      # the file ships to the VPS
+      - name: Set Telegram chat id
+        if: matrix.stack == 'monitoring'
+        env:
+          CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: |
+          if [ -z "$CHAT_ID" ]; then
+            echo "no TELEGRAM_CHAT_ID secret — leaving placeholder"
+            exit 0
+          fi
+          sed -i "s/^\( *chat_id:\) 0$/\1 $CHAT_ID/" monitoring/alertmanager/alertmanager.yml
+
       - name: Sync ${{ matrix.stack }} config
         run: |
           rsync -az --delete --exclude='.env' \
@@ -74,3 +87,11 @@ jobs:
         run: |
           ssh ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }} \
             "cd /opt/infra/${{ matrix.stack }} && docker compose up -d --remove-orphans"
+
+      # compose up doesn't restart on bind-mounted config changes; SIGHUP makes
+      # alertmanager re-read its config every deploy
+      - name: Reload alertmanager config
+        if: matrix.stack == 'monitoring'
+        run: |
+          ssh ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }} \
+            "cd /opt/infra/monitoring && docker compose kill -s SIGHUP alertmanager || true"
