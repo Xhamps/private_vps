@@ -27,18 +27,36 @@ jobs:
           done
           grep -q . ~/.ssh/known_hosts || { echo "VPS unreachable on :22"; exit 1; }
 
-      # chat_id placeholder is filled from the TELEGRAM_CHAT_ID secret before
-      # the file ships to the VPS
-      - name: Set Telegram chat id
+      # chat_id: sed into the local alertmanager.yml before rsync ships it.
+      # token: written to /opt/data via sudo stdin (never in argv/logs),
+      # alertmanager restarted only when it changed.
+      - name: Configure Telegram alerts
         if: matrix.stack == 'monitoring'
         env:
           CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
         run: |
-          if [ -z "$CHAT_ID" ]; then
+          if [ -n "$CHAT_ID" ]; then
+            sed -i "s/chat_id: 0 /chat_id: $CHAT_ID /" monitoring/alertmanager/alertmanager.yml
+            grep -q "chat_id: $CHAT_ID" monitoring/alertmanager/alertmanager.yml \
+              || { echo "chat_id replacement failed"; exit 1; }
+          else
             echo "no TELEGRAM_CHAT_ID secret — leaving placeholder"
-            exit 0
           fi
-          sed -i "s/^\( *chat_id:\) 0$/\1 $CHAT_ID/" monitoring/alertmanager/alertmanager.yml
+          if [ -n "$TOKEN" ]; then
+            printf '%s\n' "$TOKEN" | ssh ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }} "
+              sudo install -m 600 -o 65534 -g 65534 /dev/stdin /opt/data/alertmanager/telegram.token.new &&
+              sudo bash -c '
+                t=/opt/data/alertmanager/telegram.token
+                if cmp -s \"\$t.new\" \"\$t\" 2>/dev/null; then
+                  rm \"\$t.new\"
+                else
+                  mv \"\$t.new\" \"\$t\"
+                  cd /opt/infra/monitoring && docker compose restart alertmanager 2>/dev/null || true
+                fi'"
+          else
+            echo "no TELEGRAM_BOT_TOKEN secret — skipping token"
+          fi
 
       - name: Sync ${{ matrix.stack }} config
         run: |
@@ -60,28 +78,6 @@ jobs:
           { echo "DOMAIN=${{ vars.DOMAIN }}"; printf '%s\n' "$ENV_SECRETS"; } | \
             ssh ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }} \
               "umask 077 && cat > /opt/infra/${{ matrix.stack }}/.env"
-
-      # token lives in /opt/data (persistent, root-managed); written via sudo
-      # stdin so it never appears in argv or logs, restart only on change
-      - name: Inject Telegram bot token
-        if: matrix.stack == 'monitoring'
-        env:
-          TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
-        run: |
-          if [ -z "$TOKEN" ]; then
-            echo "no TELEGRAM_BOT_TOKEN secret — skipping"
-            exit 0
-          fi
-          printf '%s\n' "$TOKEN" | ssh ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }} "
-            sudo install -m 600 -o 65534 -g 65534 /dev/stdin /opt/data/alertmanager/telegram.token.new &&
-            sudo bash -c '
-              t=/opt/data/alertmanager/telegram.token
-              if cmp -s \"\$t.new\" \"\$t\" 2>/dev/null; then
-                rm \"\$t.new\"
-              else
-                mv \"\$t.new\" \"\$t\"
-                cd /opt/infra/monitoring && docker compose restart alertmanager 2>/dev/null || true
-              fi'"
 
       - name: Deploy ${{ matrix.stack }} stack
         run: |
