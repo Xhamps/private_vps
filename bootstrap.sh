@@ -85,22 +85,27 @@ install -d /opt/data/uptime-kuma                                          # runs
 
 echo "==> CI SSH keypair"
 CI_KEY=/home/$DEPLOY_USER/.ssh/ci_ed25519
+NEW_CI_KEY=0
 if [ ! -f "$CI_KEY" ]; then
   sudo -u "$DEPLOY_USER" ssh-keygen -t ed25519 -N "" -C "github-actions-ci" -f "$CI_KEY"
+  NEW_CI_KEY=1
 fi
 # ensure the CI pubkey is authorized even if a previous run dropped it
 grep -qxF "$(cat "${CI_KEY}.pub")" "$AUTH_KEYS" || cat "${CI_KEY}.pub" >> "$AUTH_KEYS"
 
 echo
-echo "================================================================"
-echo "Add these GitHub Actions secrets (this repo + each project repo):"
-echo "  SSH_HOST = $(curl -fsS -4 ifconfig.me || echo '<VPS IP>')"
-echo "  SSH_USER = $DEPLOY_USER"
-echo "  SSH_KEY  = (private key below — shown once, then delete it here)"
-echo "================================================================"
-cat "$CI_KEY"
-echo "================================================================"
-echo "After copying, run: ssh $DEPLOY_USER@<ip> 'rm ~/.ssh/ci_ed25519'"
+if [ "$NEW_CI_KEY" = 1 ]; then
+  # never print the private key (this output may land in CI logs)
+  echo "================================================================"
+  echo "NEW CI key generated. Retrieve it yourself (shown to no one else):"
+  echo "  ssh $DEPLOY_USER@<ip> cat $CI_KEY"
+  echo "Save it as the SSH_KEY secret in GitHub Actions"
+  echo "(this repo + each project repo), along with:"
+  echo "  SSH_HOST = $(curl -fsS -4 ifconfig.me || echo '<VPS IP>')"
+  echo "  SSH_USER = $DEPLOY_USER"
+  echo "Then delete it from the server: ssh $DEPLOY_USER@<ip> rm $CI_KEY"
+  echo "================================================================"
+fi
 echo
 echo "Also set in GitHub (Settings -> Secrets and variables -> Actions):"
 echo "  variable DOMAIN         = yourdomain.com"
