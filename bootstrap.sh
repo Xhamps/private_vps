@@ -86,7 +86,9 @@ install -d /opt/data/uptime-kuma                                          # runs
 echo "==> CI SSH keypair"
 CI_KEY=/home/$DEPLOY_USER/.ssh/ci_ed25519
 NEW_CI_KEY=0
-if [ ! -f "$CI_KEY" ]; then
+# keyed on the .pub (kept forever); the private half is deleted after
+# being saved to GitHub, and that must not trigger regeneration
+if [ ! -f "${CI_KEY}.pub" ]; then
   sudo -u "$DEPLOY_USER" ssh-keygen -t ed25519 -N "" -C "github-actions-ci" -f "$CI_KEY"
   NEW_CI_KEY=1
 fi
