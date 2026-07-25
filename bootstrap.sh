@@ -9,7 +9,7 @@ echo "==> apt packages"
 export DEBIAN_FRONTEND=noninteractive
 apt-get update -q
 apt-get upgrade -yq
-apt-get install -yq unattended-upgrades curl git rsync ufw fail2ban jq
+apt-get install -yq unattended-upgrades curl git rsync ufw fail2ban
 
 echo "==> deploy user"
 if ! id "$DEPLOY_USER" &>/dev/null; then
@@ -45,12 +45,7 @@ ufw allow 443/tcp
 ufw --force enable
 
 echo "==> fail2ban"
-# never ban GitHub Actions runners; list refreshed on every bootstrap run
-GH_IPS=$(curl -fsS https://api.github.com/meta | jq -r '.actions[]' | tr '\n' ' ')
-cat > /etc/fail2ban/jail.local <<EOF
-[DEFAULT]
-ignoreip = 127.0.0.1/8 ::1 $GH_IPS
-
+cat > /etc/fail2ban/jail.local <<'EOF'
 [sshd]
 enabled = true
 bantime = 1h
@@ -58,7 +53,6 @@ findtime = 10m
 maxretry = 5
 EOF
 systemctl enable --now fail2ban
-systemctl restart fail2ban
 fail2ban-client status sshd || true
 
 echo "==> docker"
