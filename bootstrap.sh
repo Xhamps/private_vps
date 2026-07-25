@@ -20,13 +20,18 @@ fi
 # group anyway (root-equivalent), so this adds no real attack surface
 echo "$DEPLOY_USER ALL=(ALL) NOPASSWD:ALL" > /etc/sudoers.d/$DEPLOY_USER
 chmod 440 /etc/sudoers.d/$DEPLOY_USER
-# reuse root's authorized_keys (Hostinger installs your personal key there)
+# reuse root's authorized_keys (Hostinger installs your personal key there);
+# append-only so re-runs never wipe keys added later (e.g. the CI key)
 install -d -m 700 -o "$DEPLOY_USER" -g "$DEPLOY_USER" /home/$DEPLOY_USER/.ssh
+AUTH_KEYS=/home/$DEPLOY_USER/.ssh/authorized_keys
+touch "$AUTH_KEYS"
 if [ -f /root/.ssh/authorized_keys ]; then
-  cp /root/.ssh/authorized_keys /home/$DEPLOY_USER/.ssh/authorized_keys
-  chown "$DEPLOY_USER:$DEPLOY_USER" /home/$DEPLOY_USER/.ssh/authorized_keys
-  chmod 600 /home/$DEPLOY_USER/.ssh/authorized_keys
+  while IFS= read -r key; do
+    grep -qxF "$key" "$AUTH_KEYS" || echo "$key" >> "$AUTH_KEYS"
+  done < /root/.ssh/authorized_keys
 fi
+chown "$DEPLOY_USER:$DEPLOY_USER" "$AUTH_KEYS"
+chmod 600 "$AUTH_KEYS"
 
 echo "==> SSH hardening"
 cat > /etc/ssh/sshd_config.d/hardening.conf <<'EOF'
@@ -82,8 +87,9 @@ echo "==> CI SSH keypair"
 CI_KEY=/home/$DEPLOY_USER/.ssh/ci_ed25519
 if [ ! -f "$CI_KEY" ]; then
   sudo -u "$DEPLOY_USER" ssh-keygen -t ed25519 -N "" -C "github-actions-ci" -f "$CI_KEY"
-  cat "${CI_KEY}.pub" >> /home/$DEPLOY_USER/.ssh/authorized_keys
 fi
+# ensure the CI pubkey is authorized even if a previous run dropped it
+grep -qxF "$(cat "${CI_KEY}.pub")" "$AUTH_KEYS" || cat "${CI_KEY}.pub" >> "$AUTH_KEYS"
 
 echo
 echo "================================================================"
