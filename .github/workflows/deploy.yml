@@ -31,12 +31,15 @@ jobs:
 
       # .env assembled from GitHub config at every deploy: DOMAIN from a repo
       # variable, secrets from an ENV_<stack> secret (multiline KEY=value block).
-      # Skipped entirely when the stack has no ENV_<stack> secret (e.g. traefik).
+      # Skipped when the stack has no ENV_<stack> secret (e.g. traefik).
       - name: Inject ${{ matrix.stack }} .env
-        if: ${{ secrets[format('ENV_{0}', matrix.stack)] != '' }}
         env:
           ENV_SECRETS: ${{ secrets[format('ENV_{0}', matrix.stack)] }}
         run: |
+          if [ -z "$ENV_SECRETS" ]; then
+            echo "no ENV_${{ matrix.stack }} secret — skipping .env"
+            exit 0
+          fi
           { echo "DOMAIN=${{ vars.DOMAIN }}"; printf '%s\n' "$ENV_SECRETS"; } | \
             ssh ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }} \
               "umask 077 && cat > /opt/infra/${{ matrix.stack }}/.env"
