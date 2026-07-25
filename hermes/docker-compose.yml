@@ -1,6 +1,8 @@
-# Hermes Agent (NousResearch) — Telegram gateway via long polling. .env is
-# written by the pipeline: TELEGRAM_* from the shared secrets, LLM API keys
-# from the ENV_hermes secret.
+# Hermes Agent (NousResearch). Two processes sharing /opt/data/hermes:
+#   gateway   — Telegram long polling, outbound only, no HTTP
+#   dashboard — web UI, served at hermes.<domain> behind basic auth
+# .env is written by the pipeline: TELEGRAM_* from the shared secrets,
+# LLM API keys + HERMES_BASIC_AUTH from the ENV_hermes secret.
 services:
   hermes:
     image: nousresearch/hermes-agent:latest
@@ -13,17 +15,29 @@ services:
     volumes:
       - /opt/data/hermes:/opt/data
     networks: [proxy]
+
+  dashboard:
+    image: nousresearch/hermes-agent:latest
+    restart: unless-stopped
+    # ponytail: --port assumed supported; if the container logs a CLI usage
+    # error, check `hermes dashboard --help` for the real flag/default port
+    command: dashboard --host 0.0.0.0 --port 3000 --no-open
+    env_file: .env
+    environment:
+      HERMES_UID: "10000"
+      HERMES_GID: "10000"
+    volumes:
+      - /opt/data/hermes:/opt/data
+    depends_on: [hermes]
+    networks: [proxy]
     labels:
       traefik.enable: "true"
       traefik.http.routers.hermes.rule: Host(`hermes.${DOMAIN}`)
       traefik.http.routers.hermes.tls.certresolver: le
-      # basic auth in front of whatever hermes serves; hash comes from the
+      # basic auth in front of the dashboard; hash comes from the
       # HERMES_BASIC_AUTH line in the ENV_hermes secret (htpasswd -nB, $ -> $$)
       traefik.http.routers.hermes.middlewares: hermes-auth
       traefik.http.middlewares.hermes-auth.basicauth.users: ${HERMES_BASIC_AUTH}
-      # ponytail: 3000 is a guess — the gateway may not serve HTTP at all
-      # (Telegram uses long polling); if https://hermes.<domain> 502s, check
-      # the real port with `docker logs` or drop these labels
       traefik.http.services.hermes.loadbalancer.server.port: "3000"
 
 networks:
