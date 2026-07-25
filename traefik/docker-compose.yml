@@ -1,6 +1,6 @@
 services:
   traefik:
-    image: traefik:v3.4
+    image: traefik:v3.6
     restart: unless-stopped
     ports:                       # the ONLY stack allowed to publish ports
       - "80:80"
