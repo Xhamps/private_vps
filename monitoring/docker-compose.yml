@@ -44,6 +44,7 @@ services:
       GF_SERVER_ROOT_URL: https://grafana.${DOMAIN}
     volumes:
       - /opt/data/grafana:/var/lib/grafana
+      - ./grafana/datasources.yml:/etc/grafana/provisioning/datasources/datasources.yml:ro
     networks: [proxy]
     labels:
       traefik.enable: "true"
