@@ -1,6 +1,6 @@
-# Hermes Agent (NousResearch) — Telegram gateway via long polling: no inbound
-# port, no Traefik labels needed. .env written by the pipeline: TELEGRAM_* from
-# the shared secrets, LLM API keys from the ENV_hermes secret.
+# Hermes Agent (NousResearch) — Telegram gateway via long polling. .env is
+# written by the pipeline: TELEGRAM_* from the shared secrets, LLM API keys
+# from the ENV_hermes secret.
 services:
   hermes:
     image: nousresearch/hermes-agent:latest
@@ -12,3 +12,16 @@ services:
       HERMES_GID: "10000"
     volumes:
       - /opt/data/hermes:/opt/data
+    networks: [proxy]
+    labels:
+      traefik.enable: "true"
+      traefik.http.routers.hermes.rule: Host(`hermes.${DOMAIN}`)
+      traefik.http.routers.hermes.tls.certresolver: le
+      # ponytail: 3000 is a guess — the gateway may not serve HTTP at all
+      # (Telegram uses long polling); if https://hermes.<domain> 502s, check
+      # the real port with `docker logs` or drop these labels
+      traefik.http.services.hermes.loadbalancer.server.port: "3000"
+
+networks:
+  proxy:
+    external: true
