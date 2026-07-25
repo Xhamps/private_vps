@@ -17,6 +17,10 @@ services:
       traefik.enable: "true"
       traefik.http.routers.hermes.rule: Host(`hermes.${DOMAIN}`)
       traefik.http.routers.hermes.tls.certresolver: le
+      # basic auth in front of whatever hermes serves; hash comes from the
+      # HERMES_BASIC_AUTH line in the ENV_hermes secret (htpasswd -nB, $ -> $$)
+      traefik.http.routers.hermes.middlewares: hermes-auth
+      traefik.http.middlewares.hermes-auth.basicauth.users: ${HERMES_BASIC_AUTH}
       # ponytail: 3000 is a guess — the gateway may not serve HTTP at all
       # (Telegram uses long polling); if https://hermes.<domain> 502s, check
       # the real port with `docker logs` or drop these labels
