@@ -1,0 +1,46 @@
+# Keycloak IAM at keycloak.<domain>. First deploy needs the ENV_keycloak
+# secret with KC_BOOTSTRAP_ADMIN_USERNAME, KC_BOOTSTRAP_ADMIN_PASSWORD
+# and KC_DB_PASSWORD (also used by postgres).
+services:
+  keycloak:
+    image: quay.io/keycloak/keycloak:26.3
+    restart: unless-stopped
+    command: start
+    env_file: .env
+    environment:
+      KC_HOSTNAME: https://keycloak.${DOMAIN}
+      KC_HTTP_ENABLED: "true"
+      KC_PROXY_HEADERS: xforwarded
+      KC_DB: postgres
+      KC_DB_URL: jdbc:postgresql://db:5432/keycloak
+      KC_DB_USERNAME: keycloak
+    depends_on:
+      db:
+        condition: service_healthy
+    networks: [proxy, internal]
+    labels:
+      traefik.enable: "true"
+      traefik.http.routers.keycloak.rule: Host(`keycloak.${DOMAIN}`)
+      traefik.http.routers.keycloak.tls.certresolver: le
+      traefik.http.services.keycloak.loadbalancer.server.port: "8080"
+
+  db:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: keycloak
+      POSTGRES_USER: keycloak
+      POSTGRES_PASSWORD: ${KC_DB_PASSWORD}
+    volumes:
+      - /opt/data/keycloak-db:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U keycloak"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks: [internal]
+
+networks:
+  proxy:
+    external: true
+  internal: {}

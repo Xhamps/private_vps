@@ -12,11 +12,28 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        stack: [traefik, monitoring, hermes, n8n]
+        stack: [traefik, monitoring, hermes, n8n, keycloak]
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      # ponytail: deploy everything when the before-sha is unknown (force push, first push)
+      - name: Check for ${{ matrix.stack }} changes
+        id: diff
+        run: |
+          BEFORE='${{ github.event.before }}'
+          if [ "$BEFORE" = "0000000000000000000000000000000000000000" ] \
+             || ! git cat-file -e "$BEFORE" 2>/dev/null \
+             || ! git diff --quiet "$BEFORE" "${{ github.sha }}" -- ${{ matrix.stack }}; then
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+            echo "no changes in ${{ matrix.stack }}/ — skipping deploy"
+          fi
 
       - name: Set up SSH
+        if: steps.diff.outputs.changed == 'true'
         run: |
           mkdir -p ~/.ssh
           echo "${{ secrets.SSH_KEY }}" > ~/.ssh/id_ed25519
@@ -31,7 +48,7 @@ jobs:
       # token: written to /opt/data via sudo stdin (never in argv/logs),
       # alertmanager restarted only when it changed.
       - name: Configure Telegram alerts
-        if: matrix.stack == 'monitoring'
+        if: steps.diff.outputs.changed == 'true' && matrix.stack == 'monitoring'
         env:
           CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
           TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
@@ -59,6 +76,7 @@ jobs:
           fi
 
       - name: Sync ${{ matrix.stack }} config
+        if: steps.diff.outputs.changed == 'true'
         run: |
           rsync -az --delete --exclude='.env' \
             ${{ matrix.stack }} \
@@ -69,6 +87,7 @@ jobs:
       # one exists. The hermes stack additionally gets the shared Telegram
       # secrets.
       - name: Inject ${{ matrix.stack }} .env
+        if: steps.diff.outputs.changed == 'true'
         env:
           ENV_SECRETS: ${{ secrets[format('ENV_{0}', matrix.stack)] }}
           TG_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
@@ -85,6 +104,7 @@ jobs:
               "umask 077 && cat > /opt/infra/${{ matrix.stack }}/.env"
 
       - name: Deploy ${{ matrix.stack }} stack
+        if: steps.diff.outputs.changed == 'true'
         run: |
           ssh ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }} \
             "cd /opt/infra/${{ matrix.stack }} && docker compose up -d --remove-orphans"
