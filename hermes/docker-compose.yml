@@ -1,11 +1,12 @@
 # Hermes Agent (NousResearch). Two processes sharing /opt/data/hermes:
 #   gateway   — Telegram long polling, outbound only, no HTTP
 #   dashboard — web UI, served at hermes.<domain> behind basic auth
+# Image is built from docker/hermes/ and pushed to GHCR as <folder-name>.
 # .env is written by the pipeline: TELEGRAM_* from the shared secrets,
-# LLM API keys + HERMES_BASIC_AUTH from the ENV_hermes secret.
+# LLM API keys + HERMES_BASIC_AUTH from the ENV_hermes secret, GHCR_OWNER.
 services:
   hermes:
-    image: nousresearch/hermes-agent:latest
+    image: ghcr.io/${GHCR_OWNER}/hermes:${TAG:-latest}
     restart: unless-stopped
     command: gateway run
     env_file: .env
@@ -17,7 +18,7 @@ services:
     networks: [proxy]
 
   dashboard:
-    image: nousresearch/hermes-agent:latest
+    image: ghcr.io/${GHCR_OWNER}/hermes:${TAG:-latest}
     restart: unless-stopped
     # ponytail: --port assumed supported; if the container logs a CLI usage
     # error, check `hermes dashboard --help` for the real flag/default port

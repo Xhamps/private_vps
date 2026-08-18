@@ -3,8 +3,18 @@ name: deploy-infra
 on:
   push:
     branches: [main]
+  workflow_dispatch:
+    inputs:
+      stack:
+        description: "Stack to deploy (empty = all)"
+        required: false
+        default: ""
 
 concurrency: deploy
+
+permissions:
+  contents: read
+  packages: read
 
 jobs:
   deploy:
@@ -21,15 +31,29 @@ jobs:
       # ponytail: deploy everything when the before-sha is unknown (force push, first push)
       - name: Check for ${{ matrix.stack }} changes
         id: diff
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          DISPATCH_STACK: ${{ inputs.stack }}
+          BEFORE: ${{ github.event.before }}
+          SHA: ${{ github.sha }}
+          STACK: ${{ matrix.stack }}
         run: |
-          BEFORE='${{ github.event.before }}'
+          if [ "$EVENT_NAME" = "workflow_dispatch" ]; then
+            if [ -z "${DISPATCH_STACK:-}" ] || [ "$DISPATCH_STACK" = "$STACK" ]; then
+              echo "changed=true" >> "$GITHUB_OUTPUT"
+            else
+              echo "changed=false" >> "$GITHUB_OUTPUT"
+              echo "workflow_dispatch stack=$DISPATCH_STACK — skipping $STACK"
+            fi
+            exit 0
+          fi
           if [ "$BEFORE" = "0000000000000000000000000000000000000000" ] \
              || ! git cat-file -e "$BEFORE" 2>/dev/null \
-             || ! git diff --quiet "$BEFORE" "${{ github.sha }}" -- ${{ matrix.stack }}; then
+             || ! git diff --quiet "$BEFORE" "$SHA" -- "$STACK"; then
             echo "changed=true" >> "$GITHUB_OUTPUT"
           else
             echo "changed=false" >> "$GITHUB_OUTPUT"
-            echo "no changes in ${{ matrix.stack }}/ — skipping deploy"
+            echo "no changes in $STACK/ — skipping deploy"
           fi
 
       - name: Set up SSH
@@ -94,6 +118,7 @@ jobs:
           TG_CHAT: ${{ secrets.TELEGRAM_CHAT_ID }}
         run: |
           { echo "DOMAIN=${{ vars.DOMAIN }}"
+            echo "GHCR_OWNER=${GITHUB_REPOSITORY_OWNER,,}"
             if [ -n "$ENV_SECRETS" ]; then printf '%s\n' "$ENV_SECRETS"; fi
             if [ "${{ matrix.stack }}" = "hermes" ]; then
               echo "TELEGRAM_BOT_TOKEN=$TG_TOKEN"
@@ -105,6 +130,21 @@ jobs:
 
       - name: Deploy ${{ matrix.stack }} stack
         if: steps.diff.outputs.changed == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          ssh ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }} \
-            "cd /opt/infra/${{ matrix.stack }} && docker compose up -d --remove-orphans"
+          echo "$GH_TOKEN" | ssh ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }} "
+            set -e
+            cd /opt/infra/${{ matrix.stack }}
+            if grep -q ghcr.io docker-compose.yml; then
+              docker login ghcr.io -u ${{ github.actor }} --password-stdin
+              if docker compose pull; then
+                docker compose up -d --remove-orphans
+              else
+                echo 'GHCR image not published yet; docker-images will re-trigger deploy'
+              fi
+              docker logout ghcr.io
+            else
+              docker compose up -d --remove-orphans
+            fi
+          "

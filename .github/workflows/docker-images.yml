@@ -1,0 +1,109 @@
+name: docker-images
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "docker/**"
+  workflow_dispatch:
+    inputs:
+      image:
+        description: "Folder under docker/ to rebuild (empty = all)"
+        required: false
+        default: ""
+
+concurrency: docker-images
+
+permissions:
+  contents: read
+  packages: write
+  actions: write
+
+jobs:
+  detect:
+    runs-on: ubuntu-latest
+    outputs:
+      images: ${{ steps.list.outputs.images }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      # ponytail: rebuild everything when the before-sha is unknown (force push, first push)
+      - name: List images to build
+        id: list
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          DISPATCH_IMAGE: ${{ inputs.image }}
+          BEFORE: ${{ github.event.before }}
+          SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          images=()
+          for dockerfile in docker/*/Dockerfile; do
+            [ -f "$dockerfile" ] || continue
+            name=$(basename "$(dirname "$dockerfile")")
+            if [ "$EVENT_NAME" = "workflow_dispatch" ]; then
+              if [ -z "${DISPATCH_IMAGE:-}" ] || [ "$DISPATCH_IMAGE" = "$name" ]; then
+                images+=("$name")
+              fi
+              continue
+            fi
+            if [ "$BEFORE" = "0000000000000000000000000000000000000000" ] \
+               || ! git cat-file -e "$BEFORE" 2>/dev/null \
+               || ! git diff --quiet "$BEFORE" "$SHA" -- "docker/$name"; then
+              images+=("$name")
+            fi
+          done
+          if [ ${#images[@]} -eq 0 ]; then
+            echo 'images=[]' >> "$GITHUB_OUTPUT"
+          else
+            echo "images=$(python3 -c 'import json,sys; print(json.dumps(sys.argv[1:]))' "${images[@]}")" >> "$GITHUB_OUTPUT"
+          fi
+          echo "building: ${images[*]:-none}"
+
+  build:
+    needs: detect
+    if: needs.detect.outputs.images != '[]'
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        image: ${{ fromJson(needs.detect.outputs.images) }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Image name
+        id: meta
+        run: |
+          owner='${{ github.repository_owner }}'
+          echo "image=ghcr.io/${owner,,}/${{ matrix.image }}" >> "$GITHUB_OUTPUT"
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: docker/setup-buildx-action@v3
+
+      - uses: docker/build-push-action@v6
+        with:
+          context: docker/${{ matrix.image }}
+          file: docker/${{ matrix.image }}/Dockerfile
+          push: true
+          provenance: false
+          tags: |
+            ${{ steps.meta.outputs.image }}:${{ github.sha }}
+            ${{ steps.meta.outputs.image }}:latest
+
+      # Sibling stack at <image>/docker-compose.yml → let deploy.yml pull + up.
+      - name: Trigger deploy
+        if: hashFiles(format('{0}/docker-compose.yml', matrix.image)) != ''
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh workflow run deploy.yml \
+            --repo "${{ github.repository }}" \
+            --ref "${{ github.ref_name }}" \
+            -f stack="${{ matrix.image }}"
