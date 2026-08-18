@@ -47,6 +47,16 @@ jobs:
             fi
             exit 0
           fi
+          # Image rebuild in this commit: skip now. docker-images.yml publishes
+          # the tag then dispatches this workflow with stack=<name>.
+          if [ -f "docker/$STACK/Dockerfile" ] \
+             && { [ "$BEFORE" = "0000000000000000000000000000000000000000" ] \
+                  || ! git cat-file -e "$BEFORE" 2>/dev/null \
+                  || ! git diff --quiet "$BEFORE" "$SHA" -- "docker/$STACK"; }; then
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+            echo "docker/$STACK changed — waiting for docker-images to dispatch deploy"
+            exit 0
+          fi
           if [ "$BEFORE" = "0000000000000000000000000000000000000000" ] \
              || ! git cat-file -e "$BEFORE" 2>/dev/null \
              || ! git diff --quiet "$BEFORE" "$SHA" -- "$STACK"; then
