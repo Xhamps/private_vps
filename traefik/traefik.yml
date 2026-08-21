@@ -17,8 +17,13 @@ entryPoints:
 
 providers:
   docker:
+    endpoint: "unix:///var/run/docker.sock"
     exposedByDefault: false
     network: proxy
+    watch: true   
+  # docker:
+  #   exposedByDefault: false
+  #   network: proxy
 
 certificatesResolvers:
   le:
@@ -31,5 +36,5 @@ metrics:
   prometheus:
     entryPoint: metrics
 
-log:
-  level: INFO
+log:             
+  level: DEBUG
