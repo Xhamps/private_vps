@@ -16,6 +16,10 @@ services:
     volumes:
       - /opt/data/hermes:/opt/data
       - /var/run/docker.sock:/var/run/docker.sock
+      # Traefik network `proxy` ≠ Hermes egress `proxy.enabled`. This
+      # stack does not run iron-proxy; flip the switch off on boot so
+      # Docker sandboxes don't fail-closed.
+      - ./cont-init/03-disable-egress:/etc/cont-init.d/03-disable-egress:ro
     networks: [proxy]
 
   dashboard:

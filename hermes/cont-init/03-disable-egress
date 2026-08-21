@@ -1,0 +1,10 @@
+#!/command/with-contenv sh
+# This stack does not run iron-proxy. If proxy.enabled is left true
+# (dashboard toggle / agent self-config), the Docker terminal backend
+# fail-closes and networked tools never start.
+# /command is s6-overlay's bin dir — not on docker-exec PATH, and
+# with-contenv may restore a PATH that omits it too.
+if [ "$(id -u)" = 0 ]; then
+  exec /command/s6-setuidgid hermes hermes egress disable
+fi
+exec hermes egress disable
