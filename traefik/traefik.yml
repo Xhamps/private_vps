@@ -17,13 +17,8 @@ entryPoints:
 
 providers:
   docker:
-    endpoint: "unix:///var/run/docker.sock"
     exposedByDefault: false
     network: proxy
-    watch: true   
-  # docker:
-  #   exposedByDefault: false
-  #   network: proxy
 
 certificatesResolvers:
   le:
@@ -37,4 +32,4 @@ metrics:
     entryPoint: metrics
 
 log:             
-  level: DEBUG
+  level: INFO
