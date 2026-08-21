@@ -11,6 +11,13 @@ services:
       - /opt/data/traefik:/acme
     networks:
       - proxy
+    labels:
+      traefik.enable: "true"
+      traefik.http.routers.dashboard.rule: "Host(`traefik.${DOMAIN}`) && (PathPrefix(`/api`) || PathPrefix(`/dashboard`))"
+      traefik.http.routers.dashboard.service: api@internal
+      traefik.http.routers.dashboard.tls.certresolver: le
+      traefik.http.routers.dashboard.middlewares: dashboard-auth
+      traefik.http.middlewares.dashboard-auth.basicauth.users: ${TRAEFIK_DASHBOARD_AUTH}
 
 networks:
   proxy:

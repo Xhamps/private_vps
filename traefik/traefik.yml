@@ -1,4 +1,7 @@
 # Traefik static config (Phase 2)
+api:
+  dashboard: true
+
 entryPoints:
   web:
     address: ":80"
