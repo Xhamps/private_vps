@@ -22,7 +22,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        stack: [traefik, monitoring, hermes, n8n, keycloak]
+        stack: [traefik, monitoring, hermes, n8n, keycloak, wazuh]
     steps:
       - uses: actions/checkout@v4
         with:
@@ -138,6 +138,12 @@ jobs:
           } | ssh ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }} \
               "umask 077 && cat > /opt/infra/${{ matrix.stack }}/.env"
 
+      - name: Wazuh first-up
+        if: steps.diff.outputs.changed == 'true' && matrix.stack == 'wazuh'
+        run: |
+          ssh ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }} \
+            "cd /opt/infra/wazuh && bash first-up.sh"
+
       - name: Deploy ${{ matrix.stack }} stack
         if: steps.diff.outputs.changed == 'true'
         env:
@@ -158,3 +164,9 @@ jobs:
               docker compose up -d --remove-orphans
             fi
           "
+
+      - name: Wazuh host agent
+        if: steps.diff.outputs.changed == 'true' && matrix.stack == 'wazuh'
+        run: |
+          ssh ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }} \
+            "cd /opt/infra/wazuh && bash install-agent.sh"
