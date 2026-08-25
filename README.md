@@ -22,6 +22,7 @@ Full design and rationale: [docs/implementation-plan.md](docs/implementation-pla
 | `bootstrap.sh` | One-time server setup — the only manual step |
 | `traefik/` | Edge proxy: TLS, 80→443 redirect, Docker auto-discovery |
 | `monitoring/` | Prometheus, node-exporter, cAdvisor, Grafana, Alertmanager, Uptime Kuma |
+| `wazuh/` | Wazuh SIEM: indexer, manager, dashboard at `wazuh.<domain>`, native agent on the host |
 | `project-template/` | Copy into each new project repo (Dockerfile, compose, deploy workflow) |
 | `.github/workflows/deploy.yml` | Syncs configs to the VPS and restarts stacks on push to `main` |
 
