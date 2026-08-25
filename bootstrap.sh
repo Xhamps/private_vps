@@ -85,6 +85,12 @@ install -d /opt/data/uptime-kuma                                          # runs
 install -d -o 10000 -g 10000 /opt/data/hermes                             # hermes agent
 install -d -o 1000 -g 1000 /opt/data/n8n                                  # n8n (node user)
 
+# Wazuh indexer needs this; persist so it survives reboot
+echo 'vm.max_map_count=262144' > /etc/sysctl.d/99-wazuh.conf
+sysctl --system >/dev/null
+install -d -o "$DEPLOY_USER" -g "$DEPLOY_USER" /opt/data/wazuh /opt/data/wazuh/certs
+install -d -o 1000 -g 1000 /opt/data/wazuh/indexer
+
 echo "==> CI SSH keypair"
 CI_KEY=/home/$DEPLOY_USER/.ssh/ci_ed25519
 NEW_CI_KEY=0
