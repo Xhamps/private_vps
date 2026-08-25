@@ -1,0 +1,6 @@
+# Scoped skip-verify for Wazuh dashboard's internal self-signed cert.
+# Do not set insecureSkipVerify globally.
+http:
+  serversTransports:
+    wazuh-dashboard:
+      insecureSkipVerify: true
