@@ -1,9 +1,85 @@
 #!/usr/bin/env bash
 # One-time server bootstrap (Phase 1). Idempotent — safe to re-run.
 # Usage: scp bootstrap.sh root@VPS_IP:/tmp/ && ssh root@VPS_IP "bash /tmp/bootstrap.sh"
+# Wazuh-only (CI, after /opt/infra/wazuh/.env exists):
+#   sudo BOOTSTRAP_WAZUH_ONLY=1 bash /tmp/bootstrap.sh
 set -euo pipefail
 
 DEPLOY_USER=deploy
+WAZUH_VER=4.14.7-1
+WAZUH_DIR=/opt/infra/wazuh
+
+bootstrap_wazuh() {
+  echo "==> wazuh host prep"
+  # Indexer needs this; persist so it survives reboot
+  echo 'vm.max_map_count=262144' > /etc/sysctl.d/99-wazuh.conf
+  sysctl -w vm.max_map_count=262144 >/dev/null
+  apt-get install -yq gettext-base
+
+  install -d -o "$DEPLOY_USER" -g "$DEPLOY_USER" /opt/data/wazuh /opt/data/wazuh/certs \
+    /opt/data/wazuh/manager /opt/data/wazuh/dashboard-config /opt/data/wazuh/dashboard-custom \
+    /opt/data/wazuh/indexer-security
+  install -d -o 1000 -g 1000 /opt/data/wazuh/indexer
+
+  # Certs / authd / SAML need the stack .env + compose configs (after first deploy sync)
+  if [ -f "$WAZUH_DIR/.env" ]; then
+    # shellcheck disable=SC1091
+    set -a && source "$WAZUH_DIR/.env" && set +a
+    : "${DOMAIN:?$WAZUH_DIR/.env missing DOMAIN}"
+    : "${SAML_EXCHANGE_KEY:?$WAZUH_DIR/.env missing SAML_EXCHANGE_KEY}"
+    : "${ENROLL_PASSWORD:?$WAZUH_DIR/.env missing ENROLL_PASSWORD}"
+
+    if [ ! -f /opt/data/wazuh/certs/root-ca.pem ]; then
+      (cd "$WAZUH_DIR" && docker compose -f generate-indexer-certs.yml run --rm generator)
+    fi
+
+    umask 077
+    printf '%s\n' "$ENROLL_PASSWORD" > /opt/data/wazuh/authd.pass
+    chmod 644 /opt/data/wazuh/authd.pass
+
+    export DOMAIN SAML_EXCHANGE_KEY
+    envsubst '$DOMAIN $SAML_EXCHANGE_KEY' < "$WAZUH_DIR/config/wazuh_indexer/config.yml.tmpl" \
+      > /opt/data/wazuh/indexer-security/config.yml
+    cp "$WAZUH_DIR/config/wazuh_indexer/roles_mapping.yml" \
+      /opt/data/wazuh/indexer-security/roles_mapping.yml
+    chmod 644 /opt/data/wazuh/indexer-security/config.yml \
+      /opt/data/wazuh/indexer-security/roles_mapping.yml
+  else
+    echo "no $WAZUH_DIR/.env yet — skipping certs/SAML/authd (set ENV_wazuh and re-run, or let CI call BOOTSTRAP_WAZUH_ONLY=1)"
+  fi
+
+  echo "==> wazuh-agent"
+  if ! dpkg -s wazuh-agent >/dev/null 2>&1; then
+    install -d /usr/share/keyrings
+    curl -fsSL https://packages.wazuh.com/key/GPG-KEY-WAZUH | gpg --dearmor -o /usr/share/keyrings/wazuh.gpg
+    echo 'deb [signed-by=/usr/share/keyrings/wazuh.gpg] https://packages.wazuh.com/4.x/apt/ stable main' \
+      > /etc/apt/sources.list.d/wazuh.list
+    apt-get update -q
+    # Enrollment password optional at first boot (manager may not be up yet)
+    if [ -n "${ENROLL_PASSWORD:-}" ]; then
+      WAZUH_MANAGER=127.0.0.1 \
+        WAZUH_REGISTRATION_PASSWORD="$ENROLL_PASSWORD" \
+        WAZUH_AGENT_NAME="$(hostname -s)" \
+        apt-get install -y "wazuh-agent=${WAZUH_VER}"
+    else
+      WAZUH_MANAGER=127.0.0.1 \
+        WAZUH_AGENT_NAME="$(hostname -s)" \
+        apt-get install -y "wazuh-agent=${WAZUH_VER}"
+    fi
+    apt-mark hold wazuh-agent
+  fi
+
+  if [ -f /var/ossec/etc/ossec.conf ]; then
+    sed -i 's#<address>.*</address>#<address>127.0.0.1</address>#' /var/ossec/etc/ossec.conf
+  fi
+  systemctl enable --now wazuh-agent
+  systemctl restart wazuh-agent || true
+}
+
+if [ "${BOOTSTRAP_WAZUH_ONLY:-}" = 1 ]; then
+  bootstrap_wazuh
+  exit 0
+fi
 
 echo "==> apt packages"
 export DEBIAN_FRONTEND=noninteractive
@@ -85,11 +161,7 @@ install -d /opt/data/uptime-kuma                                          # runs
 install -d -o 10000 -g 10000 /opt/data/hermes                             # hermes agent
 install -d -o 1000 -g 1000 /opt/data/n8n                                  # n8n (node user)
 
-# Wazuh indexer needs this; persist so it survives reboot
-echo 'vm.max_map_count=262144' > /etc/sysctl.d/99-wazuh.conf
-sysctl --system >/dev/null
-install -d -o "$DEPLOY_USER" -g "$DEPLOY_USER" /opt/data/wazuh /opt/data/wazuh/certs
-install -d -o 1000 -g 1000 /opt/data/wazuh/indexer
+bootstrap_wazuh
 
 echo "==> CI SSH keypair"
 CI_KEY=/home/$DEPLOY_USER/.ssh/ci_ed25519
@@ -120,4 +192,5 @@ echo
 echo "Also set in GitHub (Settings -> Secrets and variables -> Actions):"
 echo "  variable DOMAIN         = yourdomain.com"
 echo "  secret   ENV_monitoring = GRAFANA_ADMIN_PASSWORD=<random>"
+echo "  secret   ENV_wazuh      = see wazuh/.env.example"
 echo "The pipeline writes the .env files on the VPS from these at every deploy."

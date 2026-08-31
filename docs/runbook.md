@@ -36,7 +36,7 @@
    - `ENROLL_PASSWORD=$(openssl rand -hex 16)`
    - `SAML_EXCHANGE_KEY=$(openssl rand -hex 32)`
    - Keep `INDEXER_PASSWORD=SecretPassword`, `DASHBOARD_PASSWORD=kibanaserver`, and `API_PASSWORD=MyS3cr37P450r.*-` until you rotate them (must match the vendored bcrypt hashes in `wazuh/config/wazuh_indexer/internal_users.yml` and `wazuh.yml`).
-2. Deploy: push `wazuh/` (or `workflow_dispatch` stack `wazuh`). `first-up.sh` sets `vm.max_map_count`, generates certs once, writes SAML config; compose brings up indexer/manager/dashboard; `install-agent.sh` installs the native agent against `127.0.0.1`.
+2. Deploy: push `wazuh/` (or `workflow_dispatch` stack `wazuh`). CI runs `bootstrap.sh` with `BOOTSTRAP_WAZUH_ONLY=1` (sysctl, certs once, SAML, native agent on `127.0.0.1`), then compose up. Re-run full `bootstrap.sh` anytime to refresh host prep.
 3. Keycloak (`XhampsHub` realm) — SAML client (manual once):
    - Client type: SAML · Client ID: `wazuh-saml`
    - Valid redirect URIs: `https://wazuh.<domain>/*`

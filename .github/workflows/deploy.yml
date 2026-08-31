@@ -138,11 +138,14 @@ jobs:
           } | ssh ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }} \
               "umask 077 && cat > /opt/infra/${{ matrix.stack }}/.env"
 
-      - name: Wazuh first-up
+      # Certs/SAML/authd + agent live in bootstrap.sh (BOOTSTRAP_WAZUH_ONLY=1).
+      # Needs wazuh/ synced and .env injected first.
+      - name: Wazuh host prep
         if: steps.diff.outputs.changed == 'true' && matrix.stack == 'wazuh'
         run: |
+          scp bootstrap.sh ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}:/tmp/bootstrap.sh
           ssh ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }} \
-            "cd /opt/infra/wazuh && bash first-up.sh"
+            "sudo BOOTSTRAP_WAZUH_ONLY=1 bash /tmp/bootstrap.sh"
 
       - name: Deploy ${{ matrix.stack }} stack
         if: steps.diff.outputs.changed == 'true'
@@ -165,8 +168,9 @@ jobs:
             fi
           "
 
-      - name: Wazuh host agent
+      # Manager is up — re-run so the agent can enroll against 127.0.0.1
+      - name: Wazuh agent enroll
         if: steps.diff.outputs.changed == 'true' && matrix.stack == 'wazuh'
         run: |
           ssh ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }} \
-            "cd /opt/infra/wazuh && bash install-agent.sh"
+            "sudo BOOTSTRAP_WAZUH_ONLY=1 bash /tmp/bootstrap.sh"
