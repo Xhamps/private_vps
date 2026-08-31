@@ -110,7 +110,7 @@ services:
       wazuh.indexer:
         condition: service_healthy
       wazuh.manager:
-        condition: service_healthy
+        condition: service_started
     healthcheck:
       test: ["CMD-SHELL", "curl -sk https://localhost:5601 >/dev/null"]
       interval: 30s

@@ -121,6 +121,18 @@ Check these in order:
 
 After fixing host state: Actions → **deploy-infra** → **Run workflow** → stack `wazuh`.
 
+### CI shows `client_loop: send disconnect: Broken pipe`
+
+That is the **SSH session** dropping, not a Wazuh container error. It happened when Compose blocked waiting for `wazuh.manager` to pass its healthcheck (first boot can take several minutes). The deploy workflow now starts the dashboard after the manager **container** is up (not after every daemon is healthy) and polls before agent enroll.
+
+If a run still dies mid-SSH, check the VPS — the stack may have kept starting:
+
+```bash
+ssh deploy@VPS 'docker compose -f /opt/infra/wazuh/docker-compose.yml ps'
+```
+
+Re-run workflow stack `wazuh` if manager or dashboard is still unhealthy.
+
 ### Apply indexer security config (SAML or password rotation)
 
 Needed if SSO was missing after first boot (indexer initialized without SAML), or after changing `internal_users.yml` hashes on a live indexer:

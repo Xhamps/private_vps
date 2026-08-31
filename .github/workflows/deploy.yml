@@ -68,10 +68,19 @@ jobs:
 
       - name: Set up SSH
         if: steps.diff.outputs.changed == 'true'
+        env:
+          SSH_HOST: ${{ secrets.SSH_HOST }}
         run: |
           mkdir -p ~/.ssh
           echo "${{ secrets.SSH_KEY }}" > ~/.ssh/id_ed25519
           chmod 600 ~/.ssh/id_ed25519
+          {
+            echo "Host ${SSH_HOST}"
+            echo "  ServerAliveInterval 30"
+            echo "  ServerAliveCountMax 30"
+            echo "  TCPKeepAlive yes"
+          } >> ~/.ssh/config
+          chmod 600 ~/.ssh/config
           for i in 1 2 3 4 5; do
             ssh-keyscan -T 10 -H "${{ secrets.SSH_HOST }}" >> ~/.ssh/known_hosts && break
             echo "ssh-keyscan attempt $i failed; retrying in 10s"; sleep 10
@@ -168,9 +177,20 @@ jobs:
             fi
           "
 
-      # Manager is up — re-run so the agent can enroll against 127.0.0.1
+      # Manager may still be warming up — poll before agent enroll.
       - name: Wazuh agent enroll
         if: steps.diff.outputs.changed == 'true' && matrix.stack == 'wazuh'
         run: |
-          ssh ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }} \
-            "sudo BOOTSTRAP_WAZUH_ONLY=1 bash /tmp/bootstrap.sh"
+          ssh ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }} "
+            set -e
+            cd /opt/infra/wazuh
+            for i in \$(seq 1 36); do
+              if docker compose exec -T wazuh.manager /var/ossec/bin/wazuh-control status >/dev/null 2>&1; then
+                echo manager healthy after \${i}0s
+                break
+              fi
+              echo waiting for manager... \${i}/36
+              sleep 10
+            done
+            sudo BOOTSTRAP_WAZUH_ONLY=1 bash /tmp/bootstrap.sh
+          "
