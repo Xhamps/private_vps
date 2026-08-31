@@ -94,6 +94,33 @@
 
 `ENROLL_PASSWORD` / `SAML_EXCHANGE_KEY`: plaintext in `ENV_wazuh` only (or generate fresh with `openssl rand -hex 16` / `openssl rand -hex 32`). On the next Wazuh deploy, bootstrap rewrites `authd.pass` and the SAML config from `.env` (or from `ENV_WAZUH` if you pass that instead).
 
+### Manager unhealthy (`dependency wazuh.manager failed to start`)
+
+The dashboard waits on `wazuh.manager` passing `wazuh-control status` (every daemon running). On the VPS:
+
+```bash
+ssh deploy@VPS 'docker compose -f /opt/infra/wazuh/docker-compose.yml logs wazuh.manager --tail 80'
+ssh deploy@VPS 'docker compose -f /opt/infra/wazuh/docker-compose.yml exec wazuh.manager /var/ossec/bin/wazuh-control status'
+```
+
+Check these in order:
+
+1. **`ENV_wazuh` incomplete** — GitHub secret must include all five keys (`INDEXER_PASSWORD`, `DASHBOARD_PASSWORD`, `API_PASSWORD`, `ENROLL_PASSWORD`, `SAML_EXCHANGE_KEY`). If bootstrap skipped host prep, redeploy after fixing the secret. Bootstrap now fails the deploy instead of continuing silently.
+
+2. **`authd.pass` is a directory** — happens if compose ran before bootstrap created the file:
+   ```bash
+   ssh deploy@VPS 'file /opt/data/wazuh/authd.pass; ls -la /opt/data/wazuh/authd.pass'
+   ```
+   If it says “directory”, remove it and redeploy: `sudo rm -rf /opt/data/wazuh/authd.pass`, then re-run the wazuh workflow.
+
+3. **Password mismatch** — `INDEXER_PASSWORD` in `ENV_wazuh` must match `admin.hash` in `internal_users.yml` (demo: `SecretPassword`). Until you rotate hashes in git, use the demo values from `wazuh/.env.example`.
+
+4. **Missing or partial certs** — `ls /opt/data/wazuh/certs/` should list `root-ca.pem`, `wazuh.manager.pem`, `wazuh.manager-key.pem`, etc. Redeploy (bootstrap regenerates if any are missing).
+
+5. **Slow first boot / low RAM** — first start can take several minutes (ruleset + vulnerability feeds). Manager healthcheck allows 180s + retries; if `wazuh-control status` shows daemons still starting, wait and `docker compose up -d` again. Check OOM: `dmesg | tail | grep -i kill`.
+
+After fixing host state: Actions → **deploy-infra** → **Run workflow** → stack `wazuh`.
+
 ### Apply indexer security config (SAML or password rotation)
 
 Needed if SSO was missing after first boot (indexer initialized without SAML), or after changing `internal_users.yml` hashes on a live indexer:

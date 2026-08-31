@@ -57,19 +57,55 @@ bootstrap_wazuh() {
     set -a && source "$WAZUH_DIR/.env" && set +a
   fi
 
+  wazuh_need_secrets=0
+  if [ "${BOOTSTRAP_WAZUH_ONLY:-}" = 1 ]; then
+    wazuh_need_secrets=1
+  fi
+
   if [ -n "${ENROLL_PASSWORD:-}" ] && [ -n "${SAML_EXCHANGE_KEY:-}" ] && [ -n "${DOMAIN:-}" ]; then
     : "${DOMAIN:?missing DOMAIN}"
     : "${SAML_EXCHANGE_KEY:?missing SAML_EXCHANGE_KEY}"
     : "${ENROLL_PASSWORD:?missing ENROLL_PASSWORD}"
 
-    if [ ! -f /opt/data/wazuh/certs/root-ca.pem ]; then
+    required_certs=(
+      root-ca.pem
+      wazuh.indexer.pem wazuh.indexer-key.pem
+      wazuh.manager.pem wazuh.manager-key.pem
+      wazuh.dashboard.pem wazuh.dashboard-key.pem
+      admin.pem admin-key.pem
+    )
+    missing_certs=0
+    for cert in "${required_certs[@]}"; do
+      if [ ! -f "/opt/data/wazuh/certs/$cert" ]; then
+        missing_certs=1
+        break
+      fi
+    done
+    if [ "$missing_certs" = 1 ]; then
       (cd "$WAZUH_DIR" && docker compose -f generate-indexer-certs.yml run --rm generator)
     fi
+    for cert in "${required_certs[@]}"; do
+      [ -f "/opt/data/wazuh/certs/$cert" ] || {
+        echo "cert missing after generation: /opt/data/wazuh/certs/$cert" >&2
+        exit 1
+      }
+    done
 
+    # Compose bind-mounting a missing host path creates a directory and breaks authd.
+    if [ -d /opt/data/wazuh/authd.pass ]; then
+      echo "removing /opt/data/wazuh/authd.pass directory (stale compose mount)" >&2
+      rm -rf /opt/data/wazuh/authd.pass
+    fi
     umask 077
     printf '%s\n' "$ENROLL_PASSWORD" > /opt/data/wazuh/authd.pass
     chmod 644 /opt/data/wazuh/authd.pass
 
+    for f in config.yml roles_mapping.yml; do
+      if [ -d "/opt/data/wazuh/indexer-security/$f" ]; then
+        echo "removing /opt/data/wazuh/indexer-security/$f directory (stale compose mount)" >&2
+        rm -rf "/opt/data/wazuh/indexer-security/$f"
+      fi
+    done
     export DOMAIN SAML_EXCHANGE_KEY
     envsubst '$DOMAIN $SAML_EXCHANGE_KEY' < "$WAZUH_DIR/config/wazuh_indexer/config.yml.tmpl" \
       > /opt/data/wazuh/indexer-security/config.yml
@@ -77,6 +113,10 @@ bootstrap_wazuh() {
       /opt/data/wazuh/indexer-security/roles_mapping.yml
     chmod 644 /opt/data/wazuh/indexer-security/config.yml \
       /opt/data/wazuh/indexer-security/roles_mapping.yml
+  elif [ "$wazuh_need_secrets" = 1 ]; then
+    echo "missing DOMAIN, ENROLL_PASSWORD, or SAML_EXCHANGE_KEY in $WAZUH_DIR/.env (or ENV_WAZUH)" >&2
+    echo "ENV_wazuh must include all five keys — see wazuh/.env.example and docs/runbook.md" >&2
+    exit 1
   else
     echo "no ENV_WAZUH / $WAZUH_DIR/.env (need DOMAIN, ENROLL_PASSWORD, SAML_EXCHANGE_KEY) — skipping certs/SAML/authd"
   fi

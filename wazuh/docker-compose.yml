@@ -82,8 +82,8 @@ services:
       test: ["CMD", "/var/ossec/bin/wazuh-control", "status"]
       interval: 30s
       timeout: 10s
-      retries: 5
-      start_period: 60s
+      retries: 10
+      start_period: 180s
     networks: [internal]
 
   wazuh.dashboard:
