@@ -3,10 +3,11 @@
 ## First deploy (order matters)
 
 1. Phase 0 done (VPS + DNS wildcard + SSH key).
-2. `scp bootstrap.sh root@VPS_IP:/tmp/ && ssh root@VPS_IP "bash /tmp/bootstrap.sh"` — it generates a CI keypair and prints instructions (never the key itself). Fetch the private key over SSH, save it as the `SSH_KEY` secret (plus `SSH_HOST`, `SSH_USER`), then delete it from the VPS.
+2. `scp bootstrap.sh root@VPS_IP:/tmp/ && ssh root@VPS_IP "bash /tmp/bootstrap.sh"` — it generates a CI keypair and prints instructions (never the key itself). Fetch the private key over SSH, save it as the `SSH_KEY` secret (plus `SSH_HOST`, `SSH_USER`), then delete it from the VPS. At the end it also prints a ready-to-paste multiline `ENV_wazuh` block (`ENROLL_PASSWORD` / `SAML_EXCHANGE_KEY` are generated there).
 3. In GitHub → Settings → Secrets and variables → Actions (org-level where shared):
    - **Variable** `DOMAIN` = `yourdomain.com` (this repo + every project repo)
    - **Secret** `ENV_monitoring` = `GRAFANA_ADMIN_PASSWORD=<openssl rand -hex 16>`
+   - **Secret** `ENV_wazuh` — copy the multiline block from the bootstrap output (or wait until the Wazuh stack; see [Wazuh](#wazuh))
    - Per project repo, optional **secret** `ENV_FILE` = multiline `KEY=value` block with that app's secrets.
 
    The pipeline assembles each stack's `.env` on the VPS from these at every deploy (mode 600) — never create or edit `.env` files on the VPS by hand.
@@ -32,11 +33,26 @@
 
 ## Wazuh
 
-1. GitHub secret `ENV_wazuh` — start from `wazuh/.env.example`:
-   - `ENROLL_PASSWORD=$(openssl rand -hex 16)`
-   - `SAML_EXCHANGE_KEY=$(openssl rand -hex 32)`
-   - Keep `INDEXER_PASSWORD=SecretPassword`, `DASHBOARD_PASSWORD=kibanaserver`, and `API_PASSWORD=MyS3cr37P450r.*-` until you rotate them (must match the vendored bcrypt hashes in `wazuh/config/wazuh_indexer/internal_users.yml` and `wazuh.yml`).
-2. Deploy: push `wazuh/` (or `workflow_dispatch` stack `wazuh`). CI runs `bootstrap.sh` with `BOOTSTRAP_WAZUH_ONLY=1` (sysctl, certs once, SAML, native agent on `127.0.0.1`), then compose up. Re-run full `bootstrap.sh` anytime to refresh host prep.
+`ENV_wazuh` is **plaintext** only. The indexer does **not** read passwords from `.env` for `admin` / `kibanaserver` — those live as bcrypt hashes in `wazuh/config/wazuh_indexer/internal_users.yml` (rsynced, bind-mounted). No `envsubst` on that file. Compose uses the plaintext so manager/dashboard can talk to the indexer; both sides must match.
+
+1. GitHub secret `ENV_wazuh` — prefer the multiline block printed at the end of `bootstrap.sh`. Shape (also in `wazuh/.env.example`):
+   ```
+   INDEXER_PASSWORD=SecretPassword
+   DASHBOARD_PASSWORD=kibanaserver
+   API_PASSWORD=MyS3cr37P450r.*-
+   ENROLL_PASSWORD=<from bootstrap output>
+   SAML_EXCHANGE_KEY=<from bootstrap output>
+   ```
+   Bootstrap generates `ENROLL_PASSWORD` (`openssl rand -hex 16`) and `SAML_EXCHANGE_KEY` (`openssl rand -hex 32`). Copy that run’s values once into the GitHub secret — do not re-run bootstrap just to refresh them unless you intend to rotate.
+
+   Demo indexer/dashboard/API values are fine **only while** they match git:
+   - `INDEXER_PASSWORD=SecretPassword` → must match `admin.hash` in `internal_users.yml`
+   - `DASHBOARD_PASSWORD=kibanaserver` → must match `kibanaserver.hash` in `internal_users.yml`
+   - `API_PASSWORD=MyS3cr37P450r.*-` → must match plain text in `wazuh.yml` (no bcrypt)
+   After rotating hashes in `internal_users.yml`, update `ENV_wazuh` to the matching plaintext (see below).
+
+2. Deploy: push `wazuh/` (or `workflow_dispatch` stack `wazuh`). CI syncs configs, writes `.env` from `ENV_wazuh` + `DOMAIN`, runs `bootstrap.sh` with `BOOTSTRAP_WAZUH_ONLY=1` (reads `/opt/infra/wazuh/.env`, or an inline `ENV_WAZUH=...` env if you pass it), then compose up, then bootstrap again so the agent can enroll once the manager is up. Re-run full `bootstrap.sh` anytime to refresh host prep. The separate `.github/workflows/bootstrap.yml` (manual full host bootstrap) does **not** replace the deploy-time Wazuh host-prep step.
+
 3. Keycloak (`XhampsHub` realm) — SAML client (manual once):
    - Client type: SAML · Client ID: `wazuh-saml`
    - Valid redirect URIs: `https://wazuh.<domain>/*`
@@ -56,7 +72,31 @@
    ```
    Agents → Summary should show this host connected.
 
-If SSO is missing after first boot (indexer already initialized without SAML), apply security config once:
+### Rotate indexer / dashboard passwords
+
+1. Generate plaintext and bcrypt hashes (Wazuh 4.14.7 image):
+   ```bash
+   INDEXER_PASSWORD=$(openssl rand -base64 24)
+   DASHBOARD_PASSWORD=$(openssl rand -base64 24)
+
+   docker run --rm wazuh/wazuh-indexer:4.14.7 bash -lc \
+     'export JAVA_HOME=/usr/share/wazuh-indexer/jdk
+      /usr/share/wazuh-indexer/plugins/opensearch-security/tools/hash.sh -p "'"$INDEXER_PASSWORD"'"'
+
+   docker run --rm wazuh/wazuh-indexer:4.14.7 bash -lc \
+     'export JAVA_HOME=/usr/share/wazuh-indexer/jdk
+      /usr/share/wazuh-indexer/plugins/opensearch-security/tools/hash.sh -p "'"$DASHBOARD_PASSWORD"'"'
+   ```
+2. Put plaintext in GitHub `ENV_wazuh`. Put hashes in git: `admin.hash` ← indexer, `kibanaserver.hash` ← dashboard.
+3. Push / redeploy `wazuh`. If the indexer was already initialized, apply security config once (below) so the new hashes load.
+
+`API_PASSWORD`: change plaintext in both `ENV_wazuh` and `wazuh/config/wazuh_dashboard/wazuh.yml` (no hash).
+
+`ENROLL_PASSWORD` / `SAML_EXCHANGE_KEY`: plaintext in `ENV_wazuh` only (or generate fresh with `openssl rand -hex 16` / `openssl rand -hex 32`). On the next Wazuh deploy, bootstrap rewrites `authd.pass` and the SAML config from `.env` (or from `ENV_WAZUH` if you pass that instead).
+
+### Apply indexer security config (SAML or password rotation)
+
+Needed if SSO was missing after first boot (indexer initialized without SAML), or after changing `internal_users.yml` hashes on a live indexer:
 
 ```bash
 ssh deploy@VPS 'cd /opt/infra/wazuh && docker compose exec wazuh.indexer bash -c "

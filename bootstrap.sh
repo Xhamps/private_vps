@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # One-time server bootstrap (Phase 1). Idempotent — safe to re-run.
 # Usage: scp bootstrap.sh root@VPS_IP:/tmp/ && ssh root@VPS_IP "bash /tmp/bootstrap.sh"
-# Wazuh-only (CI, after /opt/infra/wazuh/.env exists):
-#   sudo BOOTSTRAP_WAZUH_ONLY=1 bash /tmp/bootstrap.sh
+# Wazuh-only (CI): sudo BOOTSTRAP_WAZUH_ONLY=1 bash /tmp/bootstrap.sh
+# Secrets from /opt/infra/wazuh/.env, or pass multiline ENV_WAZUH=... (and DOMAIN).
 set -euo pipefail
 
 DEPLOY_USER=deploy
@@ -21,13 +21,19 @@ bootstrap_wazuh() {
     /opt/data/wazuh/indexer-security
   install -d -o 1000 -g 1000 /opt/data/wazuh/indexer
 
-  # Certs / authd / SAML need the stack .env + compose configs (after first deploy sync)
-  if [ -f "$WAZUH_DIR/.env" ]; then
+  # Certs / authd / SAML need DOMAIN + secrets from ENV_WAZUH (inline) or the stack .env
+  if [ -n "${ENV_WAZUH:-}" ]; then
+    # shellcheck disable=SC1091
+    set -a && source <(printf '%s\n' "$ENV_WAZUH") && set +a
+  elif [ -f "$WAZUH_DIR/.env" ]; then
     # shellcheck disable=SC1091
     set -a && source "$WAZUH_DIR/.env" && set +a
-    : "${DOMAIN:?$WAZUH_DIR/.env missing DOMAIN}"
-    : "${SAML_EXCHANGE_KEY:?$WAZUH_DIR/.env missing SAML_EXCHANGE_KEY}"
-    : "${ENROLL_PASSWORD:?$WAZUH_DIR/.env missing ENROLL_PASSWORD}"
+  fi
+
+  if [ -n "${ENROLL_PASSWORD:-}" ] && [ -n "${SAML_EXCHANGE_KEY:-}" ] && [ -n "${DOMAIN:-}" ]; then
+    : "${DOMAIN:?missing DOMAIN}"
+    : "${SAML_EXCHANGE_KEY:?missing SAML_EXCHANGE_KEY}"
+    : "${ENROLL_PASSWORD:?missing ENROLL_PASSWORD}"
 
     if [ ! -f /opt/data/wazuh/certs/root-ca.pem ]; then
       (cd "$WAZUH_DIR" && docker compose -f generate-indexer-certs.yml run --rm generator)
@@ -45,7 +51,7 @@ bootstrap_wazuh() {
     chmod 644 /opt/data/wazuh/indexer-security/config.yml \
       /opt/data/wazuh/indexer-security/roles_mapping.yml
   else
-    echo "no $WAZUH_DIR/.env yet — skipping certs/SAML/authd (set ENV_wazuh and re-run, or let CI call BOOTSTRAP_WAZUH_ONLY=1)"
+    echo "no ENV_WAZUH / $WAZUH_DIR/.env (need DOMAIN, ENROLL_PASSWORD, SAML_EXCHANGE_KEY) — skipping certs/SAML/authd"
   fi
 
   echo "==> wazuh-agent"
@@ -191,6 +197,15 @@ fi
 echo
 echo "Also set in GitHub (Settings -> Secrets and variables -> Actions):"
 echo "  variable DOMAIN         = yourdomain.com"
-echo "  secret   ENV_monitoring = GRAFANA_ADMIN_PASSWORD=<random>"
-echo "  secret   ENV_wazuh      = see wazuh/.env.example"
+echo "  secret   ENV_monitoring = GRAFANA_ADMIN_PASSWORD=<openssl rand -hex 16>"
+# Generate once here for ENV_wazuh; copy into the GitHub secret (plaintext).
+# INDEXER/DASHBOARD/API demos must match vendored hashes until you rotate.
+ENROLL_PASSWORD=$(openssl rand -hex 16)
+SAML_EXCHANGE_KEY=$(openssl rand -hex 32)
+echo "  secret   ENV_wazuh      = (multiline)"
+echo "    INDEXER_PASSWORD=SecretPassword"
+echo "    DASHBOARD_PASSWORD=kibanaserver"
+echo "    API_PASSWORD=MyS3cr37P450r.*-"
+echo "    ENROLL_PASSWORD=$ENROLL_PASSWORD"
+echo "    SAML_EXCHANGE_KEY=$SAML_EXCHANGE_KEY"
 echo "The pipeline writes the .env files on the VPS from these at every deploy."
