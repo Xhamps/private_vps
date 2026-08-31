@@ -8,13 +8,40 @@ set -euo pipefail
 DEPLOY_USER=deploy
 WAZUH_VER=4.14.7-1
 WAZUH_DIR=/opt/infra/wazuh
+WAZUH_LIST=/etc/apt/sources.list.d/wazuh.list
+
+# gpg --dearmor writes mode 600; apt's _apt user then can't read the keyring and
+# every apt-get update fails with NO_PUBKEY 96B3EE5F29111145. Park a broken
+# source before update, then reinstall the key world-readable (Wazuh docs).
+park_wazuh_apt_list() {
+  if [ -f "$WAZUH_LIST" ]; then
+    mv -f "$WAZUH_LIST" "${WAZUH_LIST}.disabled"
+  fi
+}
+
+ensure_wazuh_apt_repo() {
+  apt-get install -yq curl gnupg
+  install -d /usr/share/keyrings
+  rm -f /usr/share/keyrings/wazuh.gpg
+  curl -fsSL https://packages.wazuh.com/key/GPG-KEY-WAZUH \
+    | gpg --no-default-keyring --keyring gnupg-ring:/usr/share/keyrings/wazuh.gpg --import
+  chmod 644 /usr/share/keyrings/wazuh.gpg
+  echo 'deb [signed-by=/usr/share/keyrings/wazuh.gpg] https://packages.wazuh.com/4.x/apt/ stable main' \
+    > "$WAZUH_LIST"
+  rm -f "${WAZUH_LIST}.disabled"
+}
 
 bootstrap_wazuh() {
   echo "==> wazuh host prep"
   # Indexer needs this; persist so it survives reboot
   echo 'vm.max_map_count=262144' > /etc/sysctl.d/99-wazuh.conf
   sysctl -w vm.max_map_count=262144 >/dev/null
+
+  park_wazuh_apt_list
+  apt-get update -q
   apt-get install -yq gettext-base
+  ensure_wazuh_apt_repo
+  apt-get update -q
 
   install -d -o "$DEPLOY_USER" -g "$DEPLOY_USER" /opt/data/wazuh /opt/data/wazuh/certs \
     /opt/data/wazuh/manager /opt/data/wazuh/dashboard-config /opt/data/wazuh/dashboard-custom \
@@ -56,11 +83,6 @@ bootstrap_wazuh() {
 
   echo "==> wazuh-agent"
   if ! dpkg -s wazuh-agent >/dev/null 2>&1; then
-    install -d /usr/share/keyrings
-    curl -fsSL https://packages.wazuh.com/key/GPG-KEY-WAZUH | gpg --dearmor -o /usr/share/keyrings/wazuh.gpg
-    echo 'deb [signed-by=/usr/share/keyrings/wazuh.gpg] https://packages.wazuh.com/4.x/apt/ stable main' \
-      > /etc/apt/sources.list.d/wazuh.list
-    apt-get update -q
     # Enrollment password optional at first boot (manager may not be up yet)
     if [ -n "${ENROLL_PASSWORD:-}" ]; then
       WAZUH_MANAGER=127.0.0.1 \
@@ -89,9 +111,11 @@ fi
 
 echo "==> apt packages"
 export DEBIAN_FRONTEND=noninteractive
+# Prior partial Wazuh setup leaves a signed-by repo whose keyring _apt cannot read.
+park_wazuh_apt_list
 apt-get update -q
 apt-get upgrade -yq
-apt-get install -yq unattended-upgrades curl git rsync ufw fail2ban
+apt-get install -yq unattended-upgrades curl git rsync ufw fail2ban gnupg
 
 echo "==> deploy user"
 if ! id "$DEPLOY_USER" &>/dev/null; then
