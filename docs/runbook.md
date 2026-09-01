@@ -115,9 +115,17 @@ Check these in order:
 
 3. **Password mismatch** — `INDEXER_PASSWORD` in `ENV_wazuh` must match `admin.hash` in `internal_users.yml` (demo: `SecretPassword`). Until you rotate hashes in git, use the demo values from `wazuh/.env.example`.
 
-4. **Missing or partial certs** — `ls /opt/data/wazuh/certs/` should list `root-ca.pem`, `wazuh.manager.pem`, `wazuh.manager-key.pem`, etc. Redeploy (bootstrap regenerates if any are missing).
+4. **`etc/shared/ar.conf` missing** — logs show `(1103): Could not open file 'etc/shared/ar.conf'` and `wazuh-apid` never starts (`api.log` absent). Caused by an empty `/opt/data/wazuh/manager/etc` bind-mount. Fix on the VPS, then recreate the manager:
+   ```bash
+   ssh deploy@VPS 'sudo BOOTSTRAP_WAZUH_ONLY=1 bash /tmp/bootstrap.sh'
+   ssh deploy@VPS 'cd /opt/infra/wazuh && docker compose up -d --force-recreate wazuh.manager'
+   ssh deploy@VPS 'docker compose -f /opt/infra/wazuh/docker-compose.yml exec wazuh.manager /var/ossec/bin/wazuh-control status'
+   ```
+   Bootstrap seeds `manager/etc` from the image when empty, or creates `shared/ar.conf` if the tree is partial.
 
-5. **Slow first boot / low RAM** — first start can take several minutes (ruleset + vulnerability feeds). Manager healthcheck allows 180s + retries; if `wazuh-control status` shows daemons still starting, wait and `docker compose up -d` again. Check OOM: `dmesg | tail | grep -i kill`.
+5. **Missing or partial certs** — `ls /opt/data/wazuh/certs/` should list `root-ca.pem`, `wazuh.manager.pem`, `wazuh.manager-key.pem`, etc. Redeploy (bootstrap regenerates if any are missing).
+
+6. **Slow first boot / low RAM** — first start can take several minutes (ruleset + vulnerability feeds). Manager healthcheck allows 180s + retries; if `wazuh-control status` shows daemons still starting, wait and `docker compose up -d` again. Check OOM: `dmesg | tail | grep -i kill`.
 
 After fixing host state: Actions → **deploy-infra** → **Run workflow** → stack `wazuh`.
 

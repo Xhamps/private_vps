@@ -74,7 +74,7 @@ services:
       - /opt/data/wazuh/certs/wazuh.manager.pem:/etc/ssl/filebeat.pem:ro
       - /opt/data/wazuh/certs/wazuh.manager-key.pem:/etc/ssl/filebeat.key:ro
       - ./config/wazuh_cluster/wazuh_manager.conf:/wazuh-config-mount/etc/ossec.conf:ro
-      - /opt/data/wazuh/authd.pass:/var/ossec/etc/authd.pass:ro
+      - /opt/data/wazuh/authd.pass:/wazuh-config-mount/etc/authd.pass:ro
     depends_on:
       wazuh.indexer:
         condition: service_healthy

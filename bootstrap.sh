@@ -48,6 +48,23 @@ bootstrap_wazuh() {
     /opt/data/wazuh/indexer-security
   install -d -o 1000 -g 1000 /opt/data/wazuh/indexer
 
+  # Empty host bind-mount over /var/ossec/etc hides image defaults; the entrypoint
+  # then fails on etc/shared/ar.conf (wazuh-docker #1167). Seed once, or patch.
+  manager_etc=/opt/data/wazuh/manager/etc
+  if [ ! -f "$manager_etc/shared/ar.conf" ]; then
+    if [ -z "$(ls -A "$manager_etc" 2>/dev/null || true)" ]; then
+      echo "seeding wazuh manager etc from image"
+      install -d "$manager_etc"
+      docker run --rm wazuh/wazuh-manager:4.14.7 \
+        tar -C /var/ossec/etc -cf - . | tar -C "$manager_etc" -xf -
+    else
+      echo "creating missing $manager_etc/shared/ar.conf"
+      install -d "$manager_etc/shared"
+      : > "$manager_etc/shared/ar.conf"
+    fi
+    chown -R "$DEPLOY_USER:$DEPLOY_USER" /opt/data/wazuh/manager
+  fi
+
   # Certs / authd / SAML need DOMAIN + secrets from ENV_WAZUH (inline) or the stack .env
   if [ -n "${ENV_WAZUH:-}" ]; then
     # shellcheck disable=SC1091
