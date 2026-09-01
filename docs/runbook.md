@@ -115,13 +115,15 @@ Check these in order:
 
 3. **Password mismatch** — `INDEXER_PASSWORD` in `ENV_wazuh` must match `admin.hash` in `internal_users.yml` (demo: `SecretPassword`). Until you rotate hashes in git, use the demo values from `wazuh/.env.example`.
 
-4. **`etc/shared/ar.conf` missing** — logs show `(1103): Could not open file 'etc/shared/ar.conf'` and `wazuh-apid` never starts (`api.log` absent). Caused by an empty `/opt/data/wazuh/manager/etc` bind-mount. Fix on the VPS, then recreate the manager:
+4. **Empty manager bind-mounts** — empty `/opt/data/wazuh/manager/*` dirs hide image defaults. Symptoms:
+   - `(1103): Could not open file 'etc/shared/ar.conf'` — `wazuh-apid` never starts
+   - `api.log`: `unable to open database file` during API migration — same root cause on `manager/api`
    ```bash
    ssh deploy@VPS 'sudo BOOTSTRAP_WAZUH_ONLY=1 bash /tmp/bootstrap.sh'
    ssh deploy@VPS 'cd /opt/infra/wazuh && docker compose up -d --force-recreate wazuh.manager'
    ssh deploy@VPS 'docker compose -f /opt/infra/wazuh/docker-compose.yml exec wazuh.manager /var/ossec/bin/wazuh-control status'
    ```
-   Bootstrap seeds `manager/etc` from the image when empty, or creates `shared/ar.conf` if the tree is partial.
+   Bootstrap seeds all manager data dirs from the image when empty and sets ownership to `root:wazuh` (999).
 
 5. **Missing or partial certs** — `ls /opt/data/wazuh/certs/` should list `root-ca.pem`, `wazuh.manager.pem`, `wazuh.manager-key.pem`, etc. Redeploy (bootstrap regenerates if any are missing).
 

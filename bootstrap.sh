@@ -48,22 +48,48 @@ bootstrap_wazuh() {
     /opt/data/wazuh/indexer-security
   install -d -o 1000 -g 1000 /opt/data/wazuh/indexer
 
-  # Empty host bind-mount over /var/ossec/etc hides image defaults; the entrypoint
-  # then fails on etc/shared/ar.conf (wazuh-docker #1167). Seed once, or patch.
-  manager_etc=/opt/data/wazuh/manager/etc
-  if [ ! -f "$manager_etc/shared/ar.conf" ]; then
-    if [ -z "$(ls -A "$manager_etc" 2>/dev/null || true)" ]; then
-      echo "seeding wazuh manager etc from image"
-      install -d "$manager_etc"
-      docker run --rm wazuh/wazuh-manager:4.14.7 \
-        tar -C /var/ossec/etc -cf - . | tar -C "$manager_etc" -xf -
-    else
-      echo "creating missing $manager_etc/shared/ar.conf"
-      install -d "$manager_etc/shared"
-      : > "$manager_etc/shared/ar.conf"
+  # Empty host bind-mounts hide image defaults (wazuh-docker #1167). Seed once from
+  # the manager image; ownership must be root:wazuh (999), not the deploy user.
+  mgr=/opt/data/wazuh/manager
+  install -d "$mgr"/{api,etc,logs,queue,var,integrations,active-response,agentless,wodles,filebeat-etc,filebeat-var}
+
+  seed_wazuh_manager_vol() {
+    local dest=$1 src=$2 marker=${3:-}
+    if [ -n "$marker" ] && [ -e "$dest/$marker" ]; then
+      return 0
     fi
-    chown -R "$DEPLOY_USER:$DEPLOY_USER" /opt/data/wazuh/manager
-  fi
+    if [ -z "$(ls -A "$dest" 2>/dev/null || true)" ]; then
+      echo "seeding $dest from $src"
+      docker run --rm wazuh/wazuh-manager:4.14.7 \
+        tar -C "$src" -cf - . | tar -C "$dest" -xf -
+    elif [ -n "$marker" ] && [ ! -e "$dest/$marker" ]; then
+      case "$marker" in
+        shared/ar.conf)
+          echo "creating missing $dest/$marker"
+          install -d "$dest/shared"
+          : > "$dest/shared/ar.conf"
+          ;;
+        api.yaml)
+          echo "seeding partial $dest from $src"
+          docker run --rm wazuh/wazuh-manager:4.14.7 \
+            tar -C "$src" -cf - . | tar -C "$dest" -xf -
+          ;;
+      esac
+    fi
+  }
+
+  seed_wazuh_manager_vol "$mgr/api" /var/ossec/api/configuration api.yaml
+  seed_wazuh_manager_vol "$mgr/etc" /var/ossec/etc shared/ar.conf
+  seed_wazuh_manager_vol "$mgr/logs" /var/ossec/logs
+  seed_wazuh_manager_vol "$mgr/queue" /var/ossec/queue
+  seed_wazuh_manager_vol "$mgr/var" /var/ossec/var/multigroups
+  seed_wazuh_manager_vol "$mgr/integrations" /var/ossec/integrations
+  seed_wazuh_manager_vol "$mgr/active-response" /var/ossec/active-response/bin
+  seed_wazuh_manager_vol "$mgr/agentless" /var/ossec/agentless
+  seed_wazuh_manager_vol "$mgr/wodles" /var/ossec/wodles
+  seed_wazuh_manager_vol "$mgr/filebeat-etc" /etc/filebeat
+  seed_wazuh_manager_vol "$mgr/filebeat-var" /var/lib/filebeat
+  chown -R 0:999 "$mgr"
 
   # Certs / authd / SAML need DOMAIN + secrets from ENV_WAZUH (inline) or the stack .env
   if [ -n "${ENV_WAZUH:-}" ]; then
