@@ -131,6 +131,12 @@ bootstrap_wazuh() {
     exit 1
   }
 
+  # compose mounts dashboard-config/ over .../config/, hiding the wazuh.yml file bind.
+  if [ -f "$WAZUH_DIR/config/wazuh_dashboard/wazuh.yml" ]; then
+    install -m 644 "$WAZUH_DIR/config/wazuh_dashboard/wazuh.yml" \
+      /opt/data/wazuh/dashboard-config/wazuh.yml
+  fi
+
   # Certs / authd / SAML need DOMAIN + secrets from ENV_WAZUH (inline) or the stack .env
   if [ -n "${ENV_WAZUH:-}" ]; then
     # shellcheck disable=SC1091

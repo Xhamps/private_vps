@@ -175,6 +175,22 @@ Check these in order:
 
 7. **Slow first boot / low RAM** — first start can take several minutes (ruleset + vulnerability feeds). Manager healthcheck allows 180s + retries; if `wazuh-control status` shows daemons still starting, wait and `docker compose up -d` again. Check OOM: `dmesg | tail | grep -i kill`.
 
+### Dashboard shows manager offline (agent Active in CLI)
+
+The agent can be **Active** in `agent_control -l` while the UI shows the manager/API offline — that is a **dashboard → manager API** config issue, not the host agent.
+
+Compose mounts `/opt/data/wazuh/dashboard-config/` over the dashboard config dir, which **hides** the git `wazuh.yml` file mount. If `dashboard-config/wazuh.yml` is missing, the UI cannot talk to the API.
+
+```bash
+ssh deploy@VPS 'ls -la /opt/data/wazuh/dashboard-config/wazuh.yml'
+ssh deploy@VPS 'sudo cp /opt/infra/wazuh/config/wazuh_dashboard/wazuh.yml /opt/data/wazuh/dashboard-config/wazuh.yml'
+ssh deploy@VPS 'cd /opt/infra/wazuh && docker compose restart wazuh.dashboard'
+ssh deploy@VPS 'docker compose -f /opt/infra/wazuh/docker-compose.yml exec wazuh.dashboard bash -lc \
+  "curl -sk -u \"\${API_USERNAME}:\${API_PASSWORD}\" -X POST \"https://wazuh.manager:55000/security/user/authenticate?raw=true\" | head -c 80; echo"'
+```
+
+Bootstrap now copies `wazuh.yml` into `dashboard-config/` on every Wazuh deploy. Ensure `API_PASSWORD` in `ENV_wazuh` matches the password in that file (demo: `MyS3cr37P450r.*-`).
+
 After fixing host state: Actions → **deploy-infra** → **Run workflow** → stack `wazuh`.
 
 ### CI shows `client_loop: send disconnect: Broken pipe`
