@@ -66,11 +66,14 @@
 6. Verify:
    ```bash
    ssh deploy@VPS 'docker compose -f /opt/infra/wazuh/docker-compose.yml ps'
+   ssh deploy@VPS 'docker compose -f /opt/infra/wazuh/docker-compose.yml exec wazuh.manager /var/ossec/bin/wazuh-control status'
    ssh deploy@VPS 'systemctl is-active wazuh-agent'
    ssh deploy@VPS 'ss -lntp | grep -E "1514|1515"'   # must be 127.0.0.1 only
    curl -sI "https://wazuh.$DOMAIN" | head
    ```
    Agents → Summary should show this host connected.
+
+   The manager runs **inside Docker** (`wazuh.manager`), not as host `wazuh-manager.service`. Only **`wazuh-agent`** is a native systemd unit on this VPS.
 
 ### Rotate indexer / dashboard passwords
 

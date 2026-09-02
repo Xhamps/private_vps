@@ -55,13 +55,17 @@ bootstrap_wazuh() {
 
   seed_wazuh_manager_vol() {
     local dest=$1 src=$2 marker=${3:-}
+    # Defaults live under data_tmp/permanent/ (see wazuh-docker 0-wazuh-init). Do not
+    # docker run the stock entrypoint — s6 prints "starting Filebeat" to stdout and
+    # breaks `tar | tar` pipes during CI bootstrap.
+    local image_src="/var/ossec/data_tmp/permanent${src}"
     if [ -n "$marker" ] && [ -e "$dest/$marker" ]; then
       return 0
     fi
     if [ -z "$(ls -A "$dest" 2>/dev/null || true)" ]; then
-      echo "seeding $dest from $src"
-      docker run --rm wazuh/wazuh-manager:4.14.7 \
-        tar -C "$src" -cf - . | tar -C "$dest" -xf -
+      echo "seeding $dest from $image_src"
+      docker run --rm --entrypoint tar wazuh/wazuh-manager:4.14.7 \
+        -C "$image_src" -cf - . | tar -C "$dest" -xf -
     elif [ -n "$marker" ] && [ ! -e "$dest/$marker" ]; then
       case "$marker" in
         shared/ar.conf)
@@ -70,9 +74,9 @@ bootstrap_wazuh() {
           : > "$dest/shared/ar.conf"
           ;;
         api.yaml)
-          echo "seeding partial $dest from $src"
-          docker run --rm wazuh/wazuh-manager:4.14.7 \
-            tar -C "$src" -cf - . | tar -C "$dest" -xf -
+          echo "seeding partial $dest from $image_src"
+          docker run --rm --entrypoint tar wazuh/wazuh-manager:4.14.7 \
+            -C "$image_src" -cf - . | tar -C "$dest" -xf -
           ;;
       esac
     fi
@@ -88,7 +92,7 @@ bootstrap_wazuh() {
   seed_wazuh_manager_vol "$mgr/agentless" /var/ossec/agentless
   seed_wazuh_manager_vol "$mgr/wodles" /var/ossec/wodles
   seed_wazuh_manager_vol "$mgr/filebeat-etc" /etc/filebeat
-  seed_wazuh_manager_vol "$mgr/filebeat-var" /var/lib/filebeat
+  # /var/lib/filebeat is runtime state, not in PERMANENT_DATA — empty dir is fine.
   chown -R 0:999 "$mgr"
 
   # Certs / authd / SAML need DOMAIN + secrets from ENV_WAZUH (inline) or the stack .env
