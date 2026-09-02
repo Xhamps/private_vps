@@ -123,6 +123,11 @@ bootstrap_wazuh() {
       exit 1
     }
   done
+  [ -d "$mgr/queue/db" ] || {
+    echo "wazuh manager seed incomplete: missing $mgr/queue/db" >&2
+    echo "remove /opt/data/wazuh/manager/queue and re-run bootstrap" >&2
+    exit 1
+  }
 
   # Certs / authd / SAML need DOMAIN + secrets from ENV_WAZUH (inline) or the stack .env
   if [ -n "${ENV_WAZUH:-}" ]; then

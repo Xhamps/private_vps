@@ -156,6 +156,20 @@ Check these in order:
    ssh deploy@VPS 'cd /opt/infra/wazuh && docker compose up -d wazuh.manager'
    ```
 
+   **`wazuh-db did not start correctly` / `Cannot find queue/db/wdb`** — broken or partial `manager/queue` bind-mount. authd and agent enroll fail even if the API starts. Fix:
+   ```bash
+   ssh deploy@VPS 'cd /opt/infra/wazuh && docker compose stop wazuh.manager'
+   ssh deploy@VPS 'sudo rm -rf /opt/data/wazuh/manager/queue'
+   ssh deploy@VPS 'sudo BOOTSTRAP_WAZUH_ONLY=1 bash /tmp/bootstrap.sh'
+   ssh deploy@VPS 'cd /opt/infra/wazuh && docker compose up -d --force-recreate wazuh.manager'
+   ssh deploy@VPS 'docker compose -f /opt/infra/wazuh/docker-compose.yml exec wazuh.manager /var/ossec/bin/wazuh-control status'
+   ```
+   If enroll still shows `Duplicate name` after wazuh-db is running, remove the stale agent and re-enroll:
+   ```bash
+   ssh deploy@VPS 'docker compose -f /opt/infra/wazuh/docker-compose.yml exec wazuh.manager /var/ossec/bin/agent_control -r 001'
+   ssh deploy@VPS 'sudo systemctl restart wazuh-agent'
+   ```
+
 6. **Missing or partial certs** — `ls /opt/data/wazuh/certs/` should list `root-ca.pem`, `wazuh.manager.pem`, `wazuh.manager-key.pem`, etc. Redeploy (bootstrap regenerates if any are missing).
 
 7. **Slow first boot / low RAM** — first start can take several minutes (ruleset + vulnerability feeds). Manager healthcheck allows 180s + retries; if `wazuh-control status` shows daemons still starting, wait and `docker compose up -d` again. Check OOM: `dmesg | tail | grep -i kill`.
