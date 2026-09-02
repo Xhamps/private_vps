@@ -59,9 +59,6 @@ bootstrap_wazuh() {
     # docker run the stock entrypoint — s6 prints "starting Filebeat" to stdout and
     # breaks `tar | tar` pipes during CI bootstrap.
     local image_src="/var/ossec/data_tmp/permanent${src}"
-    if [ -n "$marker" ] && [ -e "$dest/$marker" ]; then
-      return 0
-    fi
     if [ -z "$(ls -A "$dest" 2>/dev/null || true)" ]; then
       echo "seeding $dest from $image_src"
       docker run --rm --entrypoint tar wazuh/wazuh-manager:4.14.7 \
@@ -82,18 +79,50 @@ bootstrap_wazuh() {
     fi
   }
 
+  # Partial host mounts skip container init's permanent-data copy; fill gaps without
+  # overwriting existing files (cp -n).
+  merge_wazuh_manager_vol() {
+    local dest=$1 src=$2
+    local image_src="/var/ossec/data_tmp/permanent${src}"
+    echo "merging missing files into $dest"
+    docker run --rm -v "$dest:/dest:rw" --entrypoint cp wazuh/wazuh-manager:4.14.7 \
+      -rn "$image_src/." /dest/
+  }
+
   seed_wazuh_manager_vol "$mgr/api" /var/ossec/api/configuration api.yaml
+  merge_wazuh_manager_vol "$mgr/api" /var/ossec/api/configuration
   seed_wazuh_manager_vol "$mgr/etc" /var/ossec/etc shared/ar.conf
+  merge_wazuh_manager_vol "$mgr/etc" /var/ossec/etc
   seed_wazuh_manager_vol "$mgr/logs" /var/ossec/logs
+  merge_wazuh_manager_vol "$mgr/logs" /var/ossec/logs
   seed_wazuh_manager_vol "$mgr/queue" /var/ossec/queue
+  merge_wazuh_manager_vol "$mgr/queue" /var/ossec/queue
   seed_wazuh_manager_vol "$mgr/var" /var/ossec/var/multigroups
+  merge_wazuh_manager_vol "$mgr/var" /var/ossec/var/multigroups
   seed_wazuh_manager_vol "$mgr/integrations" /var/ossec/integrations
+  merge_wazuh_manager_vol "$mgr/integrations" /var/ossec/integrations
   seed_wazuh_manager_vol "$mgr/active-response" /var/ossec/active-response/bin
+  merge_wazuh_manager_vol "$mgr/active-response" /var/ossec/active-response/bin
   seed_wazuh_manager_vol "$mgr/agentless" /var/ossec/agentless
+  merge_wazuh_manager_vol "$mgr/agentless" /var/ossec/agentless
   seed_wazuh_manager_vol "$mgr/wodles" /var/ossec/wodles
+  merge_wazuh_manager_vol "$mgr/wodles" /var/ossec/wodles
   seed_wazuh_manager_vol "$mgr/filebeat-etc" /etc/filebeat
+  merge_wazuh_manager_vol "$mgr/filebeat-etc" /etc/filebeat
   # /var/lib/filebeat is runtime state, not in PERMANENT_DATA — empty dir is fine.
   chown -R 0:999 "$mgr"
+
+  for req in \
+    "$mgr/api/api.yaml" \
+    "$mgr/etc/shared/ar.conf" \
+    "$mgr/etc/ossec.conf" \
+    "$mgr/etc/lists/audit-keys"; do
+    [ -e "$req" ] || {
+      echo "wazuh manager seed incomplete: missing $req" >&2
+      echo "remove /opt/data/wazuh/manager/* and re-run bootstrap (see docs/runbook.md)" >&2
+      exit 1
+    }
+  done
 
   # Certs / authd / SAML need DOMAIN + secrets from ENV_WAZUH (inline) or the stack .env
   if [ -n "${ENV_WAZUH:-}" ]; then

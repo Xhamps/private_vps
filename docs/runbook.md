@@ -118,19 +118,47 @@ Check these in order:
 
 3. **Password mismatch** — `INDEXER_PASSWORD` in `ENV_wazuh` must match `admin.hash` in `internal_users.yml` (demo: `SecretPassword`). Until you rotate hashes in git, use the demo values from `wazuh/.env.example`.
 
-4. **Empty manager bind-mounts** — empty `/opt/data/wazuh/manager/*` dirs hide image defaults. Symptoms:
-   - `(1103): Could not open file 'etc/shared/ar.conf'` — `wazuh-apid` never starts
-   - `api.log`: `unable to open database file` during API migration — same root cause on `manager/api`
+4. **Empty or corrupt manager bind-mounts** — empty or half-seeded `/opt/data/wazuh/manager/*` hides image defaults (often after a failed bootstrap tar). Symptoms:
+   - `(1103): Could not open file 'etc/shared/ar.conf'`
+   - `api.log`: `unable to open database file`
+   - `wazuh-control status`: nearly everything **not running** (`wazuh-clusterd` is expected — cluster is disabled in `ossec.conf`)
+
+   Check the real error first:
    ```bash
+   ssh deploy@VPS 'docker compose -f /opt/infra/wazuh/docker-compose.yml logs wazuh.manager --tail 50'
+   ssh deploy@VPS 'docker compose -f /opt/infra/wazuh/docker-compose.yml exec wazuh.manager grep -iE "error|critical" /var/ossec/logs/ossec.log | tail -20'
+   ```
+
+   If seed markers are missing (`api.yaml`, `etc/shared/ar.conf`), wipe manager state and re-seed:
+   ```bash
+   ssh deploy@VPS 'cd /opt/infra/wazuh && docker compose stop wazuh.manager'
+   ssh deploy@VPS 'sudo rm -rf /opt/data/wazuh/manager/{api,etc,logs,queue,var,integrations,active-response,agentless,wodles,filebeat-etc,filebeat-var}'
    ssh deploy@VPS 'sudo BOOTSTRAP_WAZUH_ONLY=1 bash /tmp/bootstrap.sh'
    ssh deploy@VPS 'cd /opt/infra/wazuh && docker compose up -d --force-recreate wazuh.manager'
    ssh deploy@VPS 'docker compose -f /opt/infra/wazuh/docker-compose.yml exec wazuh.manager /var/ossec/bin/wazuh-control status'
    ```
-   Bootstrap seeds all manager data dirs from the image when empty and sets ownership to `root:wazuh` (999).
+   Bootstrap seeds from `data_tmp/permanent`, merges missing files into partial mounts, and fails the deploy if key files (including `etc/lists/audit-keys`) are still missing.
 
-5. **Missing or partial certs** — `ls /opt/data/wazuh/certs/` should list `root-ca.pem`, `wazuh.manager.pem`, `wazuh.manager-key.pem`, etc. Redeploy (bootstrap regenerates if any are missing).
+5. **`wazuh-apid did not start correctly`** — container init exits but Filebeat may still run. Check:
+   ```bash
+   ssh deploy@VPS 'docker compose -f /opt/infra/wazuh/docker-compose.yml exec wazuh.manager tail -30 /var/ossec/logs/api.log'
+   ```
+   - `unable to open database file` — broken `manager/api` seed; merge or wipe `manager/api`, re-bootstrap, recreate manager.
+   - Missing `etc/lists/*` warnings — partial `manager/etc`; bootstrap now merges missing files (`cp -rn`). Re-run bootstrap without wiping if only lists are missing:
+     ```bash
+     ssh deploy@VPS 'sudo BOOTSTRAP_WAZUH_ONLY=1 bash /tmp/bootstrap.sh'
+     ssh deploy@VPS 'cd /opt/infra/wazuh && docker compose up -d --force-recreate wazuh.manager'
+     ```
+   If `api/security/rbac.db` is corrupt after failed migrations, stop the manager and remove it (API recreates on start):
+   ```bash
+   ssh deploy@VPS 'cd /opt/infra/wazuh && docker compose stop wazuh.manager'
+   ssh deploy@VPS 'sudo rm -f /opt/data/wazuh/manager/api/security/rbac.db'
+   ssh deploy@VPS 'cd /opt/infra/wazuh && docker compose up -d wazuh.manager'
+   ```
 
-6. **Slow first boot / low RAM** — first start can take several minutes (ruleset + vulnerability feeds). Manager healthcheck allows 180s + retries; if `wazuh-control status` shows daemons still starting, wait and `docker compose up -d` again. Check OOM: `dmesg | tail | grep -i kill`.
+6. **Missing or partial certs** — `ls /opt/data/wazuh/certs/` should list `root-ca.pem`, `wazuh.manager.pem`, `wazuh.manager-key.pem`, etc. Redeploy (bootstrap regenerates if any are missing).
+
+7. **Slow first boot / low RAM** — first start can take several minutes (ruleset + vulnerability feeds). Manager healthcheck allows 180s + retries; if `wazuh-control status` shows daemons still starting, wait and `docker compose up -d` again. Check OOM: `dmesg | tail | grep -i kill`.
 
 After fixing host state: Actions → **deploy-infra** → **Run workflow** → stack `wazuh`.
 
