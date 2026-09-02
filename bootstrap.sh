@@ -110,7 +110,9 @@ bootstrap_wazuh() {
   seed_wazuh_manager_vol "$mgr/filebeat-etc" /etc/filebeat
   merge_wazuh_manager_vol "$mgr/filebeat-etc" /etc/filebeat
   # /var/lib/filebeat is runtime state, not in PERMANENT_DATA — empty dir is fine.
-  chown -R 0:999 "$mgr"
+  # Daemons run as wazuh (uid/gid 999). root-owned queue/db prevents wazuh-db from
+  # creating the wdb socket (API error 1017, wazuh-db->failed).
+  chown -R 999:999 "$mgr"
 
   for req in \
     "$mgr/api/api.yaml" \

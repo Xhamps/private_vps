@@ -156,11 +156,12 @@ Check these in order:
    ssh deploy@VPS 'cd /opt/infra/wazuh && docker compose up -d wazuh.manager'
    ```
 
-   **`wazuh-db did not start correctly` / `Cannot find queue/db/wdb`** — broken or partial `manager/queue` bind-mount. authd and agent enroll fail even if the API starts. Fix:
+   **`wazuh-db did not start correctly` / `Cannot find queue/db/wdb`** — broken or partial `manager/queue` bind-mount, or wrong ownership (`queue/db` must be `wazuh:wazuh` / 999:999). authd and agent enroll fail even if the API starts. Fix:
    ```bash
    ssh deploy@VPS 'cd /opt/infra/wazuh && docker compose stop wazuh.manager'
    ssh deploy@VPS 'sudo rm -rf /opt/data/wazuh/manager/queue'
    ssh deploy@VPS 'sudo BOOTSTRAP_WAZUH_ONLY=1 bash /tmp/bootstrap.sh'
+   ssh deploy@VPS 'sudo chown -R 999:999 /opt/data/wazuh/manager/queue'   # if bootstrap predates 999:999 fix
    ssh deploy@VPS 'cd /opt/infra/wazuh && docker compose up -d --force-recreate wazuh.manager'
    ssh deploy@VPS 'docker compose -f /opt/infra/wazuh/docker-compose.yml exec wazuh.manager /var/ossec/bin/wazuh-control status'
    ```
