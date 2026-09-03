@@ -1,6 +1,17 @@
 # Scoped skip-verify for Wazuh dashboard's internal self-signed cert.
 # Do not set insecureSkipVerify globally.
+#
+# internal-only: private Traefik hosts reachable via Twingate (connector
+# hits 127.0.0.1) and local Docker (Uptime Kuma hairpin). Public IPs → 403.
 http:
   serversTransports:
     wazuh-dashboard:
       insecureSkipVerify: true
+  middlewares:
+    internal-only:
+      ipAllowList:
+        sourceRange:
+          - 127.0.0.0/8
+          - 10.0.0.0/8
+          - 172.16.0.0/12
+          - 192.168.0.0/16
