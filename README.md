@@ -38,7 +38,7 @@ On the VPS: configs in `/opt/infra` and `/opt/apps/<name>`, persistent data in `
    ```
    It hardens SSH (test key login before closing the session!), sets up ufw/fail2ban/Docker, and prints a CI keypair.
 3. **GitHub secrets** (this repo + every project repo): `SSH_HOST`, `SSH_USER` (`deploy`), `SSH_KEY` (printed by bootstrap — delete from the VPS after copying).
-4. **GitHub config**: variable `DOMAIN`, secret `ENV_monitoring` (Grafana password), optional per-app `ENV_FILE` secret — details in [runbook step 3](docs/runbook.md#first-deploy-order-matters).
+4. **GitHub config**: variable `DOMAIN`, secret `ENV_monitoring` (Grafana password), optional per-app `ENV_FILE` secret — details in [runbook step 3](docs/runbook.md#first-deploy-order-matters). Set secret `ENV_twingate` before deploying the private-host lock-down — see [Twingate](docs/runbook.md#twingate).
 5. **Push to `main`** → Traefik and monitoring go live. Verify with the whoami test in the runbook.
 
 From here the server is never configured by hand again — every change goes through git.
