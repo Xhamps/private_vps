@@ -1,0 +1,16 @@
+# Twingate Connector — host network so Resources use 127.0.0.1:443 / :22.
+# Tokens from ENV_twingate (pipeline writes .env). No Traefik labels; no published ports.
+services:
+  twingate-connector:
+    image: twingate/connector:1
+    container_name: twingate-connector
+    restart: unless-stopped
+    network_mode: host
+    environment:
+      TWINGATE_NETWORK: ${TWINGATE_NETWORK}
+      TWINGATE_ACCESS_TOKEN: ${TWINGATE_ACCESS_TOKEN}
+      TWINGATE_REFRESH_TOKEN: ${TWINGATE_REFRESH_TOKEN}
+      TWINGATE_LOG_ANALYTICS: v2
+      TWINGATE_LOG_LEVEL: "3"
+    sysctls:
+      net.ipv4.ping_group_range: "0 2147483647"
