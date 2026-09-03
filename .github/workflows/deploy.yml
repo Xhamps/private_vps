@@ -144,8 +144,33 @@ jobs:
               echo "TELEGRAM_ALLOWED_USERS=$TG_CHAT"
               echo "TELEGRAM_HOME_CHANNEL=$TG_CHAT"
             fi
+            # Twingate Resources use public DNS; connector hairpins to this IP.
+            # SSH_HOST must be the numeric VPS IP (not a hostname).
+            if [ "${{ matrix.stack }}" = "traefik" ]; then
+              echo "VPS_PUBLIC_IP=${{ secrets.SSH_HOST }}"
+            fi
           } | ssh ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }} \
               "umask 077 && cat > /opt/infra/${{ matrix.stack }}/.env"
+
+      # Render Traefik dynamic.yml (allowlist includes VPS_PUBLIC_IP for Twingate hairpin).
+      - name: Render Traefik dynamic config
+        if: steps.diff.outputs.changed == 'true' && matrix.stack == 'traefik'
+        run: |
+          ssh ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }} '
+            set -euo pipefail
+            cd /opt/infra/traefik
+            set -a && source .env && set +a
+            : "${VPS_PUBLIC_IP:?missing VPS_PUBLIC_IP in traefik .env}"
+            case "$VPS_PUBLIC_IP" in
+              *[a-zA-Z]*)
+                echo "VPS_PUBLIC_IP must be a numeric IP (SSH_HOST), got: $VPS_PUBLIC_IP" >&2
+                exit 1
+                ;;
+            esac
+            command -v envsubst >/dev/null || sudo apt-get install -yq gettext-base
+            envsubst '\''$VPS_PUBLIC_IP'\'' < dynamic.yml.tmpl > dynamic.yml
+            grep -q "$VPS_PUBLIC_IP/32" dynamic.yml
+          '
 
       # Certs/SAML/authd + agent live in bootstrap.sh (BOOTSTRAP_WAZUH_ONLY=1).
       # Needs wazuh/ synced and .env injected first.

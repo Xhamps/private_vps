@@ -224,24 +224,26 @@ ssh deploy@VPS 'cd /opt/infra/wazuh && docker compose exec wazuh.indexer bash -c
 
 ## Twingate
 
-Private Traefik hosts (Grafana, Wazuh, n8n, Keycloak, Hermes, status, Traefik dashboard) use `internal-only` middleware — reachable only via the Twingate Connector on this VPS. Portfolio / public apps stay open (no middleware label).
+Private Traefik hosts (Grafana, Wazuh, n8n, Keycloak, Hermes, status, Traefik dashboard) use `internal-only` middleware — reachable only when the request source is loopback, Docker, or **this VPS public IP** (Twingate connector hairpin). Portfolio / public apps stay open (no middleware label).
+
+Resources use **public DNS** (same hostnames as Traefik). The connector resolves them to the VPS public IP and connects there; Traefik must allow that IP (`VPS_PUBLIC_IP` from GitHub `SSH_HOST` — must be numeric).
 
 1. Twingate Admin Console: create account → Remote Network `vps-prod`.
 2. Deploy Connector → generate Access + Refresh tokens → GitHub secret `ENV_twingate` (multiline from `twingate/.env.example`: `TWINGATE_NETWORK`, `TWINGATE_ACCESS_TOKEN`, `TWINGATE_REFRESH_TOKEN`).
-3. Resources (alias → address), then grant your user access and install the Twingate client:
+3. Resources — Alias and Address are the **same public hostname** (port 443). Optional SSH Resource uses the VPS public IP. Grant your user access and install the Twingate client:
 
    | Alias | Address |
    |---|---|
-   | `grafana.<domain>` | `127.0.0.1:443` |
-   | `wazuh.<domain>` | `127.0.0.1:443` |
-   | `n8n.<domain>` | `127.0.0.1:443` |
-   | `keycloak.<domain>` | `127.0.0.1:443` |
-   | `hermes.<domain>` | `127.0.0.1:443` |
-   | `status.<domain>` | `127.0.0.1:443` |
-   | `traefik.<domain>` | `127.0.0.1:443` |
-   | `ssh-vps` (optional) | `127.0.0.1:22` |
+   | `grafana.<domain>` | `grafana.<domain>` (TCP 443) |
+   | `wazuh.<domain>` | `wazuh.<domain>` (TCP 443) |
+   | `n8n.<domain>` | `n8n.<domain>` (TCP 443) |
+   | `keycloak.<domain>` | `keycloak.<domain>` (TCP 443) |
+   | `hermes.<domain>` | `hermes.<domain>` (TCP 443) |
+   | `status.<domain>` | `status.<domain>` (TCP 443) |
+   | `traefik.<domain>` | `traefik.<domain>` (TCP 443) |
+   | `ssh-vps` (optional) | `<VPS_PUBLIC_IP>` (TCP 22) |
 
-4. Deploy: push or `workflow_dispatch` stacks `traefik`, private stacks, and `twingate` (or push all). **Set `ENV_twingate` and confirm the connector is online before or with the middleware/labels deploy** — otherwise you lock yourself out of admin UIs without VPN.
+4. Deploy: push or `workflow_dispatch` stacks `traefik`, private stacks, and `twingate` (or push all). **Set `ENV_twingate` and confirm the connector is online before or with the middleware/labels deploy** — otherwise you lock yourself out of admin UIs without VPN. Traefik deploy renders `dynamic.yml` from `dynamic.yml.tmpl` with `VPS_PUBLIC_IP=$SSH_HOST`.
 5. Verify:
    ```bash
    # Twingate OFF — expect 403 on private host
@@ -249,9 +251,11 @@ Private Traefik hosts (Grafana, Wazuh, n8n, Keycloak, Hermes, status, Traefik da
    # Portfolio — still 200 (adjust hostname)
    curl -sI "https://$DOMAIN" | head -1
    ssh deploy@VPS 'docker compose -f /opt/infra/twingate/docker-compose.yml ps'
+   ssh deploy@VPS 'grep sourceRange -A6 /opt/infra/traefik/dynamic.yml'   # must list VPS IP/32
    ```
 6. Portfolio / public apps: never attach `internal-only@file`. Private new apps: add the label.
 7. Do not remove UFW OpenSSH (CI needs it).
+8. Still 403 with Twingate on: confirm Resource address is the public hostname (not only an alias), connector is on this VPS, and Traefik allowlist includes the VPS public IP (`SSH_HOST` must be numeric).
 
 ## Rollback
 

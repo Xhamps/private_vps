@@ -1,8 +1,10 @@
 # Scoped skip-verify for Wazuh dashboard's internal self-signed cert.
 # Do not set insecureSkipVerify globally.
 #
-# internal-only: private Traefik hosts reachable via Twingate (connector
-# hits 127.0.0.1) and local Docker (Uptime Kuma hairpin). Public IPs → 403.
+# internal-only: private Traefik hosts via Twingate. Connector Resources use
+# public DNS (hairpin to this VPS public IP). Also allow loopback + Docker
+# (Uptime Kuma). Other public IPs → 403.
+# Rendered on deploy: envsubst → dynamic.yml (VPS_PUBLIC_IP from SSH_HOST).
 http:
   serversTransports:
     wazuh-dashboard:
@@ -15,3 +17,4 @@ http:
           - 10.0.0.0/8
           - 172.16.0.0/12
           - 192.168.0.0/16
+          - ${VPS_PUBLIC_IP}/32
