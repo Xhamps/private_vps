@@ -12,5 +12,5 @@ services:
       TWINGATE_REFRESH_TOKEN: ${TWINGATE_REFRESH_TOKEN}
       TWINGATE_LOG_ANALYTICS: v2
       TWINGATE_LOG_LEVEL: "3"
-    sysctls:
-      net.ipv4.ping_group_range: "0 2147483647"
+    # No sysctls: Docker forbids net.ipv4.ping_group_range with network_mode: host.
+    # ICMP Resource checks are optional; HTTPS Resources do not need this.
