@@ -12,6 +12,9 @@ services:
       retries: 3
       start_period: 15s
     networks: [proxy]
+    # Private app (VPN-only): add
+    #   traefik.http.routers.myapp.middlewares: internal-only@file
+    # Public app (e.g. portfolio): omit that label.
     labels:
       traefik.enable: "true"
       traefik.http.routers.myapp.rule: Host(`myapp.${DOMAIN}`)

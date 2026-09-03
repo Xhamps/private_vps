@@ -1,6 +1,6 @@
 # private_vps
 
-Infrastructure repo for a single Hostinger VPS (Ubuntu 24.04) hosting multiple projects as Docker Compose stacks. [Traefik](traefik/) is the only container exposed to the internet — it auto-routes each `*.yourdomain.com` subdomain to its container via Docker labels and issues Let's Encrypt certificates automatically. Deploys are GitHub Actions → GHCR → SSH; monitoring is Prometheus + Grafana + Alertmanager + Uptime Kuma.
+Infrastructure repo for a single Hostinger VPS (Ubuntu 24.04) hosting multiple projects as Docker Compose stacks. [Traefik](traefik/) is the only container exposed to the internet — it auto-routes each `*.yourdomain.com` subdomain to its container via Docker labels and issues Let's Encrypt certificates automatically. Deploys are GitHub Actions → GHCR → SSH; monitoring is Prometheus + Grafana + Alertmanager + Uptime Kuma. Private admin UIs (`grafana.*`, `wazuh.*`, etc.) require the [Twingate](twingate/) client; the portfolio (public app) stays publicly reachable.
 
 ```
                         Internet
@@ -23,6 +23,7 @@ Full design and rationale: [docs/implementation-plan.md](docs/implementation-pla
 | `traefik/` | Edge proxy: TLS, 80→443 redirect, Docker auto-discovery |
 | `monitoring/` | Prometheus, node-exporter, cAdvisor, Grafana, Alertmanager, Uptime Kuma |
 | `wazuh/` | Wazuh SIEM: indexer, manager, dashboard at `wazuh.<domain>`, native agent on the host |
+| `twingate/` | Twingate Connector (host network); private Traefik hosts use `internal-only` middleware |
 | `project-template/` | Copy into each new project repo (Dockerfile, compose, deploy workflow) |
 | `.github/workflows/deploy.yml` | Syncs configs to the VPS and restarts stacks on push to `main` |
 

@@ -222,6 +222,37 @@ ssh deploy@VPS 'cd /opt/infra/wazuh && docker compose exec wazuh.indexer bash -c
 "'
 ```
 
+## Twingate
+
+Private Traefik hosts (Grafana, Wazuh, n8n, Keycloak, Hermes, status, Traefik dashboard) use `internal-only` middleware — reachable only via the Twingate Connector on this VPS. Portfolio / public apps stay open (no middleware label).
+
+1. Twingate Admin Console: create account → Remote Network `vps-prod`.
+2. Deploy Connector → generate Access + Refresh tokens → GitHub secret `ENV_twingate` (multiline from `twingate/.env.example`: `TWINGATE_NETWORK`, `TWINGATE_ACCESS_TOKEN`, `TWINGATE_REFRESH_TOKEN`).
+3. Resources (alias → address), then grant your user access and install the Twingate client:
+
+   | Alias | Address |
+   |---|---|
+   | `grafana.<domain>` | `127.0.0.1:443` |
+   | `wazuh.<domain>` | `127.0.0.1:443` |
+   | `n8n.<domain>` | `127.0.0.1:443` |
+   | `keycloak.<domain>` | `127.0.0.1:443` |
+   | `hermes.<domain>` | `127.0.0.1:443` |
+   | `status.<domain>` | `127.0.0.1:443` |
+   | `traefik.<domain>` | `127.0.0.1:443` |
+   | `ssh-vps` (optional) | `127.0.0.1:22` |
+
+4. Deploy: push or `workflow_dispatch` stacks `traefik`, private stacks, and `twingate` (or push all). **Set `ENV_twingate` and confirm the connector is online before or with the middleware/labels deploy** — otherwise you lock yourself out of admin UIs without VPN.
+5. Verify:
+   ```bash
+   # Twingate OFF — expect 403 on private host
+   curl -sI "https://grafana.$DOMAIN" | head -1
+   # Portfolio — still 200 (adjust hostname)
+   curl -sI "https://$DOMAIN" | head -1
+   ssh deploy@VPS 'docker compose -f /opt/infra/twingate/docker-compose.yml ps'
+   ```
+6. Portfolio / public apps: never attach `internal-only@file`. Private new apps: add the label.
+7. Do not remove UFW OpenSSH (CI needs it).
+
 ## Rollback
 
 ```bash
