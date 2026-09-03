@@ -22,6 +22,7 @@ services:
       traefik.enable: "true"
       traefik.http.routers.keycloak.rule: Host(`keycloak.${DOMAIN}`)
       traefik.http.routers.keycloak.tls.certresolver: le
+      traefik.http.routers.keycloak.middlewares: internal-only@file
       traefik.http.services.keycloak.loadbalancer.server.port: "8080"
 
   db:

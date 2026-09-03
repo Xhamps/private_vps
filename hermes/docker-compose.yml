@@ -41,6 +41,7 @@ services:
       traefik.enable: "true"
       traefik.http.routers.hermes.rule: Host(`hermes.${DOMAIN}`)
       traefik.http.routers.hermes.tls.certresolver: le
+      traefik.http.routers.hermes.middlewares: internal-only@file
       # auth is handled by the dashboard itself (HERMES_DASHBOARD_BASIC_AUTH_*
       # env vars from the ENV_hermes secret)
       traefik.http.services.hermes.loadbalancer.server.port: "3000"

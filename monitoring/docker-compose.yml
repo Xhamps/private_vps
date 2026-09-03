@@ -64,6 +64,7 @@ services:
       traefik.enable: "true"
       traefik.http.routers.grafana.rule: Host(`grafana.${DOMAIN}`)
       traefik.http.routers.grafana.tls.certresolver: le
+      traefik.http.routers.grafana.middlewares: internal-only@file
       traefik.http.services.grafana.loadbalancer.server.port: "3000"
 
   alertmanager:
@@ -87,6 +88,7 @@ services:
       traefik.enable: "true"
       traefik.http.routers.kuma.rule: Host(`status.${DOMAIN}`)
       traefik.http.routers.kuma.tls.certresolver: le
+      traefik.http.routers.kuma.middlewares: internal-only@file
       traefik.http.services.kuma.loadbalancer.server.port: "3001"
 
 networks:

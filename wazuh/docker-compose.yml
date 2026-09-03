@@ -122,6 +122,7 @@ services:
       traefik.enable: "true"
       traefik.http.routers.wazuh.rule: Host(`wazuh.${DOMAIN}`)
       traefik.http.routers.wazuh.tls.certresolver: le
+      traefik.http.routers.wazuh.middlewares: internal-only@file
       traefik.http.services.wazuh.loadbalancer.server.port: "5601"
       traefik.http.services.wazuh.loadbalancer.server.scheme: https
       traefik.http.services.wazuh.loadbalancer.serversTransport: wazuh-dashboard@file
