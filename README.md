@@ -24,6 +24,7 @@ Full design and rationale: [docs/implementation-plan.md](docs/implementation-pla
 | `monitoring/` | Prometheus, node-exporter, cAdvisor, Grafana, Alertmanager, Uptime Kuma |
 | `wazuh/` | Wazuh SIEM: indexer, manager, dashboard at `wazuh.<domain>`, native agent on the host |
 | `twingate/` | Twingate Connector (host network); private Traefik hosts use `internal-only` middleware |
+| `litellm/` | LiteLLM Proxy (LLM gateway) at `litellm.<domain>`; Twingate-only |
 | `project-template/` | Copy into each new project repo (Dockerfile, compose, deploy workflow) |
 | `.github/workflows/deploy.yml` | Syncs configs to the VPS and restarts stacks on push to `main` |
 

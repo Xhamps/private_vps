@@ -224,7 +224,7 @@ ssh deploy@VPS 'cd /opt/infra/wazuh && docker compose exec wazuh.indexer bash -c
 
 ## Twingate
 
-Private Traefik hosts (Grafana, Wazuh, n8n, Keycloak, Hermes, status, Traefik dashboard) use `internal-only` middleware — reachable only when the request source is loopback, Docker, or **this VPS public IP** (Twingate connector hairpin). Portfolio / public apps stay open (no middleware label).
+Private Traefik hosts (Grafana, Wazuh, n8n, Keycloak, Hermes, LiteLLM, status, Traefik dashboard) use `internal-only` middleware — reachable only when the request source is loopback, Docker, or **this VPS public IP** (Twingate connector hairpin). Portfolio / public apps stay open (no middleware label).
 
 Resources use **public DNS** (same hostnames as Traefik). The connector resolves them to the VPS public IP and connects there; Traefik must allow that IP (`VPS_PUBLIC_IP` from GitHub `SSH_HOST` — must be numeric).
 
@@ -239,6 +239,7 @@ Resources use **public DNS** (same hostnames as Traefik). The connector resolves
    | `n8n.<domain>` | `n8n.<domain>` (TCP 443) |
    | `keycloak.<domain>` | `keycloak.<domain>` (TCP 443) |
    | `hermes.<domain>` | `hermes.<domain>` (TCP 443) |
+   | `litellm.<domain>` | `litellm.<domain>` (TCP 443) |
    | `status.<domain>` | `status.<domain>` (TCP 443) |
    | `traefik.<domain>` | `traefik.<domain>` (TCP 443) |
    | `ssh-vps` (optional) | `<VPS_PUBLIC_IP>` (TCP 22) |

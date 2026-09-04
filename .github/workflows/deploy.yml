@@ -22,7 +22,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        stack: [traefik, monitoring, hermes, n8n, keycloak, wazuh, twingate]
+        stack: [traefik, monitoring, hermes, n8n, keycloak, wazuh, twingate, litellm]
     steps:
       - uses: actions/checkout@v4
         with:
