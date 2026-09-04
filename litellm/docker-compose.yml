@@ -1,0 +1,42 @@
+# LiteLLM Proxy (LLM gateway) at litellm.<domain>. Models and provider
+# keys are configured in the UI after first boot (STORE_MODEL_IN_DB).
+# Secrets: ENV_litellm → LITELLM_MASTER_KEY, LITELLM_SALT_KEY, LITELLM_DB_PASSWORD.
+services:
+  litellm:
+    image: docker.litellm.ai/berriai/litellm:v1.99.0
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      DATABASE_URL: postgresql://litellm:${LITELLM_DB_PASSWORD}@db:5432/litellm
+      STORE_MODEL_IN_DB: "True"
+    depends_on:
+      db:
+        condition: service_healthy
+    networks: [proxy, internal]
+    labels:
+      traefik.enable: "true"
+      traefik.http.routers.litellm.rule: Host(`litellm.${DOMAIN}`)
+      traefik.http.routers.litellm.tls.certresolver: le
+      traefik.http.routers.litellm.middlewares: internal-only@file
+      traefik.http.services.litellm.loadbalancer.server.port: "4000"
+
+  db:
+    image: postgres:16
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: litellm
+      POSTGRES_USER: litellm
+      POSTGRES_PASSWORD: ${LITELLM_DB_PASSWORD}
+    volumes:
+      - /opt/data/litellm-db:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U litellm"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    networks: [internal]
+
+networks:
+  proxy:
+    external: true
+  internal: {}
